@@ -10,13 +10,10 @@ authors = "emdash"
 
 -- packages to add to search path
 depends = contrib
-        , indexed
         , json
         , elab-util
-        , sop
-        , refined
-        , algebra
         , quantifiers-extra
+	, posix
 
 -- modules to install
 modules = TUI
