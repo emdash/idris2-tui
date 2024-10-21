@@ -116,8 +116,3 @@ ansiDecoder = automaton Default decode
     decode '\n'   self = emit Enter
     decode '\t'   self = emit Tab
     decode c      self = emit (Alpha c)
-
-||| An event source which decodes raw `Char`s into `Key` values.
-export
-onAnsiKey : IO (Event Key)
-onAnsiKey = decoded "Stdin" ansiDecoder

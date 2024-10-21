@@ -2,6 +2,8 @@ module Main
 
 
 import TUI
+import TUI.MainLoop
+import TUI.MainLoop.InputShim
 
 
 %default total
@@ -84,7 +86,7 @@ testForm = ariaForm [
 partial export
 gallery : IO ()
 gallery = do
-  case !(runComponent testForm) of
+  case !(runComponent !inputShim testForm) of
     Nothing => putStrLn "User Canceled"
     Just choice => putStrLn $ "User selected: \{show choice}"
 

@@ -64,6 +64,7 @@ import public TUI.Geometry
 
 %default total
 
+
 namespace Context
   ||| A context for drawing to the terminal.
   |||
@@ -229,3 +230,49 @@ namespace Arrow
   arrow Up     = "⬆"
   arrow Down   = "⬇"
   arrow UpDown = "⬍"
+
+
+||| Provides control over terminal modes, like cursor visibility, alt
+||| screen mode, and synchronous update mode.
+|||
+||| As these are only intended to be used from MainLoop
+||| implementations, they are `IO` actions, rather than context
+||| actions.
+namespace VTerm
+
+  ||| Clear the contents of the screen.
+  export
+  clearScreen : IO ()
+  clearScreen = putStr $ eraseScreen All
+
+  ||| Switch into or out of the alternate screen buffer
+  export
+  altScreen : Bool -> IO ()
+  altScreen True  = putStr $ "\ESC[?1049h"
+  altScreen False = putStr $ "\ESC[?1049l"
+
+  ||| Show or hide cursor
+  export
+  cursor : Bool -> IO ()
+  cursor True  = putStr "\ESC[?25h"
+  cursor False = putStr "\ESC[?25l"
+
+  ||| Tell the terminal to save its state.
+  export
+  saveCursor : IO ()
+  saveCursor = putStr "\ESC7"
+
+  ||| Tell the terminal to restore its state.
+  export
+  restoreCursor : IO ()
+  restoreCursor = putStr "\ESC8"
+
+  ||| synchronous update Supported by iTerm2 and other fancy terminals
+  export
+  beginSyncUpdate : IO ()
+  beginSyncUpdate = putStrLn "\ESC[?2026h"
+
+  ||| synchronous update supported by iTerm2 and other fancy terminals
+  export
+  endSyncUpdate : IO ()
+  endSyncUpdate = putStrLn "\ESC[?2026l"

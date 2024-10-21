@@ -13,7 +13,6 @@ depends = contrib
         , json
         , elab-util
         , quantifiers-extra
-	, posix
 
 -- modules to install
 modules = TUI
@@ -37,6 +36,7 @@ modules = TUI
         , TUI.Key
         , TUI.Layout
         , TUI.MainLoop
+        , TUI.MainLoop.InputShim
         , TUI.Painting
         , TUI.View
 	, TUI.Zipper.List
