@@ -76,7 +76,12 @@ there's demand for it, but I don't want to mandate it at the moment.
 
 ## Events ##
 
-Events are hard-coded to be ANSI keys. This is a huge limitation of
-the library at the moment.
+There's a `MainLoop` interface for handling events. The library
+provides three mainloop implementations:
 
-I could use help solving this problem without compromising the API.
+- `Base`: reads stdin directly using `getChar` from base
+- `InputShim`: decodes events as JSON records sent via stdin.
+- `Default`: chooses between `Base` and `InputShim` at runtime.
+
+Events are hard-coded to be ANSI keys. This is a huge limitation of
+the library at the moment. I could use help with that (hint hint).

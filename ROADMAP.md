@@ -38,17 +38,6 @@ input shim. The reason for this is that I can't figure out the best
 way to generalize event handling without breaking other features of
 the API that I think I like..
 
-## Events are Processed Externally
-
-Right now I use a small python script to set up STDIN properly so that
-you can detect individual keystrokes. This python script actually
-sends event reports to Idris encoded as JSON packets.
-
-I will likely retain this code, since it seems quite useful for
-testing and debugging, if nothing else.
-
-This is waiting on library support, which should be coming soon.
-
 ## Keyboard Input
 
 I plan to support this standard for [unambigous keyboard
