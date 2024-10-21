@@ -34,4 +34,4 @@ function shim {
     python input-shim.py 2>shim_log
 }
 
-shim | ./build/exec/gallery "$@" 2> debug_log
+shim | ./build/exec/ampii "$@" 2> debug_log
