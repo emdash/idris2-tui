@@ -129,6 +129,16 @@ namespace OverloadsAreaNatArea
 
 ||| A width and height without a location.
 namespace Area
+  ||| An empty area
+  export
+  empty : Area
+  empty = MkArea 0 0
+
+  ||| An area 1 row x 1 column
+  export
+  unit : Area
+  unit = MkArea 1 1
+
   ||| Combine two areas to yield an area that contains both
   export
   union : Area -> Area -> Area
@@ -150,29 +160,32 @@ namespace Area
 
   export
   (-) : Area -> Area -> Area
-  a - b = MkArea (a.width `minus` b.width) (a.height `minus` b.height)
+  a - b = MkArea {
+    width = (a.width `diff` b.width),
+    height = (a.height `diff` b.height)
+  }
 
 ||| Associated definitiosn for `Rect`.
 namespace Rect
-  ||| Northwest corner of the given rect
+  ||| The width of a rectangle in columns
   export
-  (.nw) : Rect -> Pos
-  (.nw) b = b.pos
+  (.width) : Rect -> Nat
+  (.width) self = self.size.width
 
-  ||| Northeast corner of the given rect
+  ||| The number of columns to span
   export
-  (.ne) : Rect -> Pos
-  (.ne) b = b.pos + MkArea b.size.width 0
+  (.hspan) : Rect -> Nat
+  (.hspan) self = self.width `minus` 1
 
-  ||| Northwest corner of the given rect
+  ||| The height of a rectangle in rows
   export
-  (.se) : Rect -> Pos
-  (.se) b = b.pos + b.size
+  (.height) : Rect -> Nat
+  (.height) self = self.size.height
 
-  ||| Southwest corner of the given rect
+  ||| The number of rows to span
   export
-  (.sw) : Rect -> Pos
-  (.sw) b = b.pos + MkArea 0 b.size.height
+  (.vspan) : Rect -> Nat
+  (.vspan) self = self.height `minus` 1
 
   ||| The column of the left side of the rect
   export
@@ -182,7 +195,7 @@ namespace Rect
   ||| The column of the east side of the rect
   export
   (.e) : Rect -> Nat
-  (.e) b = b.pos.x + b.size.width
+  (.e) b = b.pos.x + b.hspan
 
   ||| The row of the north side of the rect
   export
@@ -192,52 +205,68 @@ namespace Rect
   ||| The row of the south side of the rect.
   export
   (.s) : Rect -> Nat
-  (.s) b = b.pos.y + b.size.height
+  (.s) b = b.pos.y + b.vspan
+
+  ||| Northwest corner of the given rect
+  export
+  (.nw) : Rect -> Pos
+  (.nw) b = b.pos
+
+  ||| Northeast corner of the given rect
+  export
+  (.ne) : Rect -> Pos
+  (.ne) b = MkPos b.e b.n
+
+  ||| Northwest corner of the given rect
+  export
+  (.se) : Rect -> Pos
+  (.se) b = MkPos b.e b.s
+
+  ||| Southwest corner of the given rect
+  export
+  (.sw) : Rect -> Pos
+  (.sw) b = MkPos b.w b.s
 
   ||| Return the smallest rectangle which contains the two points.
   export
   fromPoints : Pos -> Pos -> Rect
   fromPoints a b = MkRect (min a b) (a - b)
 
-  ||| Split horizontally at `w` and return the pieces
+  ||| Split from the left at `w` and return the pieces
   export
-  hsplit : Rect -> Nat -> (Rect, Rect)
-  hsplit b w =
+  (.splitLeft) : Rect -> Nat -> (Rect, Rect)
+  (.splitLeft) b w =
     let
-      left  = MkRect b.nw (MkArea w b.size.height)
-      right = fromPoints (b.nw.shiftRight w) b.se
-    in
-      (left , right)
+      left  = MkRect b.nw (MkArea w b.height)
+      right = fromPoints (left.ne.shiftRight 1) (b.se + unit)
+    in (left, right)
 
-  ||| Like `hsplit`, but leave room for a vertical separator
+  ||| Split from the right at `w` and return the pieces
   export
-  hdivide : Rect -> Nat -> (Rect, Rect)
-  hdivide b w =
+  (.splitRight) : Rect -> Nat -> (Rect, Rect)
+  (.splitRight) b w =
     let
-      left  = MkRect b.nw (MkArea w b.size.height)
-      right = fromPoints (b.nw.shiftRight (w + 1)) b.se
-    in
-      (left , right)
+      right = fromPoints (b.ne.shiftLeft (w `minus` 1)) (b.se + unit)
+      left  = fromPoints b.nw $ right.sw.shiftDown 1
+    in (left, right)
 
-  ||| Split vertically at `h` and return the pieces
+  ||| Split vertically from the top at `h` and return the pieces.
   export
-  vsplit : Rect -> Nat -> (Rect, Rect)
-  vsplit b h =
+  (.splitTop) : Rect -> Nat -> (Rect, Rect)
+  (.splitTop) b h =
     let
-      top = MkRect b.nw (MkArea b.size.width h)
-      bot = fromPoints (b.nw.shiftDown h) b.se
-    in
-      (top , bot)
+      top = MkRect b.nw (MkArea b.width h)
+      bot = fromPoints (top.sw.shiftDown 1) (b.se + unit)
+    in (top, bot)
 
-  ||| Like `vsplit` but leave room for a horizontal separator.
+  ||| Split vertically from the top at `h` and return the pieces.
   export
-  vdivide : Rect -> Nat -> (Rect, Rect)
-  vdivide b h =
+  (.splitBottom) : Rect -> Nat -> (Rect, Rect)
+  (.splitBottom) b h =
     let
-      top = MkRect b.nw (MkArea b.size.width h)
-      bot = fromPoints (b.nw.shiftDown (h + 1)) b.se
-    in
-      (top , bot)
+      bot = fromPoints (b.sw.shiftUp (h `minus` 1)) (b.se + unit)
+      top = fromPoints b.nw $ bot.se.shiftRight 1
+    in (top, bot)
 
   ||| The smallest bounding box fully containing both rectangles.
   export
@@ -246,8 +275,7 @@ namespace Rect
     let
       tl = min a.nw b.nw
       br = min a.se b.se
-    in
-      fromPoints tl br
+    in fromPoints tl br
 
   ||| Rectangles form a semigroup with the union operation.
   export
@@ -318,3 +346,51 @@ inset self offset = {
 export
 shrink : Rect -> Rect
 shrink r = inset r $ MkArea 1 1
+
+
+namespace Test
+  0 TestPos : Pos
+  TestPos = MkPos 5 10
+
+  0 TestWindow : Rect
+  TestWindow = MkRect origin (MkArea 80 24)
+
+  testShiftRight : ((.shiftRight) TestPos 5) = MkPos 10 10
+  testShiftRight = Refl
+
+  testShiftLeft : ((.shiftLeft) TestPos 5) = MkPos 0 10
+  testShiftLeft = Refl
+
+  testShiftDown : ((.shiftDown) TestPos 5) = MkPos 5 15
+  testShiftDown = Refl
+
+  testShiftUp : ((.shiftUp) TestPos 5) = MkPos 5 5
+  testShiftUp = Refl
+
+  testFromPoints
+    : fromPoints Pos.origin (MkPos 81 25)
+      = MkRect Pos.origin (MkArea 80 24)
+  testFromPoints = Refl
+
+  testPtAddition : (TestPos + MkArea 0 0) = TestPos
+  testPtAddition = Refl
+
+  testSplitLeft
+    : ((.splitLeft) TestWindow 1)
+    = (MkRect Pos.origin (MkArea 1 24), MkRect (MkPos 2 1) (MkArea 79 24))
+  testSplitLeft = Refl
+
+  testSplitRight
+    : ((.splitRight) TestWindow 1)
+    = (MkRect Pos.origin (MkArea 79 24), MkRect (MkPos 80 1) (MkArea 1 24))
+  testSplitRight = Refl
+
+  testSplitTop
+    : ((.splitTop) TestWindow 1)
+    = (MkRect Pos.origin (MkArea 80 1), MkRect (MkPos 1 2) (MkArea 80 23))
+  testSplitTop = Refl
+
+  testSplitBottom
+    : ((.splitBottom) TestWindow 1)
+    = (MkRect Pos.origin (MkArea 80 23), MkRect (MkPos 1 24) (MkArea 80 1))
+  testSplitBottom = Refl

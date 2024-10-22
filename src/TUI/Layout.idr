@@ -53,9 +53,43 @@ export
 packTop : View v => State -> Rect -> v -> Context Rect
 packTop state window self = do
   let split = (size self).height
-  let (top, bottom) = vsplit window split
+  let (top, bottom) = window.splitTop split
   paint state top self
   pure bottom
+
+||| Paint the given view into the bottom of the given window.
+|||
+||| Return the remaning space in the window.
+export
+packBottom : View v => State -> Rect -> v -> Context Rect
+packBottom state window self = do
+  let split = (size self).height
+  let (top, bottom) = window.splitBottom split
+  paint state bottom self
+  pure top
+
+||| Paint the given view into the left of the given window.
+|||
+||| Return the remaning space in the window.
+export
+packLeft : View v => State -> Rect -> v -> Context Rect
+packLeft state window self = do
+  let split = (size self).width
+  let (left, right) = window.splitLeft split
+  paint state left self
+  pure right
+
+||| Paint the given view into the right of the given window.
+|||
+||| Return the remaning space in the window.
+export
+packRight : View v => State -> Rect -> v -> Context Rect
+packRight state window self = do
+  let split = (size self).width
+  let (left, right) = window.splitRight split
+  paint state right self
+  pure left
+
 
 ||| Paint the given list of views, laying them out vertically within
 ||| `window`.
@@ -73,17 +107,6 @@ paintVertical state window (x :: xs) = paintVertical state !(packTop state windo
 export
 sizeHorizontal : View itemT => List itemT -> Area
 sizeHorizontal self = foldl (flip $ vunion . size) (MkArea 0 0) self
-
-||| Paint the given view into the left of the given window.
-|||
-||| Return the remaning space in the window.
-export
-packLeft : View v => State -> Rect -> v -> Context Rect
-packLeft state window self = do
-  let split = (size self).width
-  let (left, right) = hdivide window split
-  paint state left self
-  pure right
 
 ||| Paint the given list of views, laying them out vertically within
 ||| `window`.
@@ -109,21 +132,3 @@ View Rule where
 
   paint _ window HRule = hline window.nw window.size.width
   paint _ window VRule = vline window.nw window.size.height
-
-||| Paint two views into the given rectangle with a vertical line
-||| between them.
-export
-hpane
-  : View leftT
-  => View rightT
-  => State
-  -> Rect
-  -> leftT
-  -> rightT
-  -> Nat
-  -> Context ()
-hpane state window left right split = do
-  let (l_window, r_window) = hdivide window split
-  paint state l_window left
-  vline (MkPos split window.n) window.size.height
-  paint state r_window right

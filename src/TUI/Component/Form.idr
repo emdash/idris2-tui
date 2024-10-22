@@ -87,7 +87,7 @@ paintField
   -> Field valueT
   -> Context ()
 paintField split state window self = do
-  let (left, right) = hdivide window split
+  let (left, right) = window.splitLeft split
   case state of
     Focused => do
       sgr [SetStyle SingleUnderline]
@@ -116,6 +116,25 @@ where
 ||| The focus state of a form
 data FocusState = Edit | Submit | Cancel
 
+||| XXX: This is some boilerplate right here. There should be a
+||| component for this.
+View FocusState where
+  size _ = View.size "[Cancel] [Submit]"
+  paint state window self = do
+    window <- packRight submitState window "[Submit]"
+    window <- packRight Normal      window " "
+    ignore $  packRight cancelState window "[Cancel]"
+  where
+    submitState : State
+    submitState = case self of
+      Submit => Focused -- XXX: show as disabled when form is invalid
+      _      => Normal
+
+    cancelState : State
+    cancelState = case self of
+      Cancel => Focused
+      _      => Normal
+
 ||| A form is a heterogenous container of labeled components.
 |||
 ||| Form fields are placed automatically.
@@ -138,7 +157,7 @@ implementation [splitAt]
   -> View (Field valueT)
 where
   size self = vunion (MkArea split 1) (size self.value)
-  paint = paintField split
+  paint = paintField (split + 2)
 
 ||| View implementation for `Form`
 export
@@ -150,29 +169,16 @@ where
   size self = size @{vertical} self.fields
   paint state window self = do
     let contents = shrink window
-    vline (contents.nw.shiftRight self.split) contents.size.height
+    vline (contents.nw.shiftRight (self.split + 1)) contents.size.height
     case state of
       Focused => box window
       _       => pure ()
     ignore $ packTop @{vertical} fieldsState contents self.fields
-    withState cancelState $ do
-      showTextAt contents.sw "[Cancel]"
-    withState submitState $ do
-      showTextAt (contents.sw.shiftRight (length "[Cancel]" + 2)) "[Submit]"
+    ignore $ packBottom state contents self.focus
   where
     fieldsState : State
     fieldsState = case self.focus of
       Edit   => Focused
-      _      => Normal
-
-    submitState : State
-    submitState = case self.focus of
-      Submit => Focused -- XXX: show as disabled when form is invalid
-      _      => Normal
-
-    cancelState : State
-    cancelState = case self.focus of
-      Cancel => Focused
       _      => Normal
 
 ||| Advance to the next component.
@@ -203,10 +209,10 @@ ariaKeys
   -> Component.Handler (Form tys) (HVect tys) Key
 ariaKeys key self = case (key, self.focus) of
   (Tab, _)        => update $ next self
+  (Escape, _)     => exit
   (_, Edit)       => handleEdit
   (Enter, Submit) => onSubmit
   (Enter, Cancel) => exit
-  (Escape, _)     => exit
   _               => ignore
 where
   validate : All Maybe a -> Maybe (HVect a)

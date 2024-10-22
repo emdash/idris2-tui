@@ -184,14 +184,13 @@ namespace Box
   ||| Fill a rectangle with the given character
   export
   fill : Char -> Rect -> Context ()
-  fill c box = loop box.size.height
+  fill c box = loop box.height box.nw
     where
-      loop : Nat -> Context ()
-      loop Z = pure ()
-      loop i@(S n) = do
-        let pos = MkPos box.pos.x i
-        showTextAt pos $ replicate box.size.width c
-        loop n
+      loop : Nat -> Pos -> Context ()
+      loop Z _ = pure ()
+      loop i@(S n) pos = do
+        showTextAt pos $ replicate box.width c
+        loop n $ pos.shiftDown 1
 
   ||| Draw a box around the given rectangle
   |||
@@ -200,10 +199,10 @@ namespace Box
   box : Rect -> Context ()
   box r = do
     -- draw the lines at full size
-    hline r.nw r.size.width
-    hline r.sw r.size.width
-    vline r.nw r.size.height
-    vline r.ne r.size.height
+    hline r.nw r.hspan
+    hline r.sw r.hspan
+    vline r.nw r.vspan
+    vline r.ne r.vspan
     -- paint over with the corners
     putAt r.nw NW
     putAt r.ne NE
