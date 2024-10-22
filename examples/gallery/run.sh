@@ -29,6 +29,10 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+shopt -s checkwinsize; (:;:)
+
+export LINES="${LINES}"
+export COLUMNS="${COLUMNS}"
 
 function shim {
     python input-shim.py 2>shim_log
@@ -42,4 +46,5 @@ case "$1" in
 	;;
     *)
 	./build/exec/gallery
+	;;
 esac
