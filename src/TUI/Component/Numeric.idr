@@ -54,6 +54,7 @@ data Digits
   = Integral (SnocList (Fin 10))
   | Decimal  (SnocList (Fin 10)) (SnocList (Fin 10))
 
+
 ||| A component for numeric input:
 |||
 ||| Ignores non-numeric keypresses, and cannot hold a non-numeric
@@ -67,8 +68,8 @@ data Digits
 export
 record Numeric a where
   constructor N
-  digits   : Digits
-  sign     : Bool
+  digits : Digits
+  sign   : Bool
 
 ||| Convert a character to a digit for event handling.
 charToDigit : Char -> Maybe (Fin 10)
@@ -90,7 +91,7 @@ export empty : Digits ; empty = Integral [<]
 digitsToString : Digits -> String
 digitsToString self = case self of
   Integral   ds => impl ds
-  Decimal  i ds => "\{show i}.\{impl ds}"
+  Decimal  i ds => "\{impl i}.\{impl ds}"
   where
     impl : SnocList (Fin 10) -> String
     impl [<] = "0"
@@ -140,7 +141,7 @@ paintNumeric symbol state window self = do
 
 ||| Interface for supported numeric types.
 export
-interface Supported a where
+interface Show a => Supported a where
   (.value)    : Numeric a -> Maybe a
   symbol      : Char
   charToInput : Char -> Maybe Input
@@ -176,6 +177,25 @@ handleChar char self = case charToInput {a = a} char of
   Nothing => ignore
   Just i  => update $ insert i self
 
+
+||| Create a numeric widget from a number value.
+export
+new : Supported a => Numeric a
+new = N {
+  digits   = empty, -- xxx: decode
+  sign     = False
+}
+
+export
+fromValue : Supported a => a -> Numeric a
+fromValue v = fromString new $ unpack $ show v
+  where
+    fromString : Numeric a -> List Char -> Numeric a
+    fromString self [] = self
+    fromString self (x :: xs) = case charToInput {a = a} x of
+      Nothing => fromString self xs
+      Just i => insert i $ fromString self xs
+
 ||| Implement Model for supported number types.
 export
 Supported a => View (Numeric a) where
@@ -192,17 +212,9 @@ handle Enter        self = exitWith self.value
 handle Escape       self = exit
 handle _            self = ignore
 
-||| Create a numeric widget from a number value.
-export
-new : Supported a => a -> Numeric a
-new value = N {
-  digits   = empty, -- xxx: decode
-  sign     = False
-}
-
 export
 numeric : Supported a => a -> Component a
-numeric value = component (new value) handle (.value)
+numeric value = component (Numeric.fromValue value) handle (.value)
 
 export
 %hint
