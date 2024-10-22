@@ -17,8 +17,8 @@ It's not quite there yet, except for that last one.
 
 ## MVC vs MVU ##
 
-In classical MVC, a model is a stateful object. This is a
-model-view-update approach.
+In classical MVC, a model is a stateful object. In contrast, this
+library uses model-view-update.
 
 The central notions are:
 
@@ -31,11 +31,14 @@ There are some libraries / embedded DSLs for writing views and
 handlers.
 
 Concretely, `View` is an *interface* which types can implement,
-somewhat like `Show`. `Component` is a dependent record type, which
-pairs an internal state type with a compatible handler. Then there is
-a library of reusable components which work on values of the
-`Component` type. Then there is `MainLoop`, which is all the machinery
-required to run a component as a UI.
+somewhat like `Show`.
+
+`Component` is a dependent record type, which pairs an internal state
+type with a compatible handler. Then there is a library of reusable
+components which work on values of the `Component` type.
+
+Then there is `MainLoop`, which contains the machinery required to run
+a component as a UI.
 
 ## Geometry ##
 
@@ -48,6 +51,11 @@ Working with raw indices is annoying. This library provides:
 Various operations are implemented on these which allow shifting,
 scaling, and subdivision.
 
+The math in this module is integer-based, as we're working with
+character cells rather than geometric points. If you're experiencing
+issues with layout, it's possible there's an off-by-one issue in this
+library.
+
 ## Painting ##
 
 - `Context` models the state of the terminal window
@@ -57,14 +65,13 @@ scaling, and subdivision.
   to subviews.
 
 In comparison to ncurses, this library does direct drawing to the
-terminal. And so, there are no intermediate buffers. Moreover,
-there is no optimization of screen updates.
+terminal. And so, there are no intermediate buffers. Moreover, there
+is no optimization of screen updates.
 
-Instead of optimizing updates, I use [Kitty's synchronous update
-protocol]
-(https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec).
+Instead of optimizing updates, I use
+[iTerm2's synchronous updates](https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec).
 This is protocol is ignored on unsupported terminals -- what you get
-may or may not be usable.
+may or may not be usable, as you'll likely experience flicker.
 
 I would like to support progressive enhancement, but I also want to
 support things like sixel graphics. To do optimized updates on legacy
@@ -76,12 +83,36 @@ there's demand for it, but I don't want to mandate it at the moment.
 
 ## Events ##
 
+Right now there is only support for events of type `TUI.Key`. I hope
+to add support for events of arbitrary type, but I might need some
+help with this.
+
 There's a `MainLoop` interface for handling events. The library
 provides three mainloop implementations:
 
-- `Base`: reads stdin directly using `getChar` from base
+- `Base`: reads stdin directly using `getChar` from base.
 - `InputShim`: decodes events as JSON records sent via stdin.
 - `Default`: chooses between `Base` and `InputShim` at runtime.
 
+My next priority is to implement a MainLoop on top of `idris2-linux`,
+as the `Base` mainloop doesn't allow for any concurrency. Now that we
+have `idris2-async`, and `idris2-uv`, it makes sense to include
+mainloop impls for each of those, as well.
+
 Events are hard-coded to be ANSI keys. This is a huge limitation of
 the library at the moment. I could use help with that (hint hint).
+
+## Components Produce Values ##
+
+A value of type `Component a` may yield a value of type `a`.
+
+When you call `runComponent`, the component will run until it yields a
+value, at which point, the mainloop exits and returns the given value.
+
+## Modal Components ##
+
+When you use `runComponent`, there is an implicit stack of
+components. You can push a new component with the `Push` / `push`
+response. This top component will display until it yields a value. A
+callback provided to the `push` response merges the value back into
+the parent component.
