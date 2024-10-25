@@ -15,77 +15,48 @@ The design is still in flux, but the goal is to allow for:
 
 It's not quite there yet, except for that last one.
 
-## MVC vs MVU ##
+## Overview
 
 In classical MVC, a model is a stateful object. In contrast, this
-library uses model-view-update.
+library uses model-view-update. States are immutable, and updates are
+expressed via pure functions.
 
 The central notions are:
 
-- *View*
-- *Event*
-- *Handler*
-- *Component*
+### *State*
 
-There are some libraries / embedded DSLs for writing views and
-handlers.
+The complete state of your application. Changes to state should be
+expressed as pure functions.
 
-Concretely, `View` is an *interface* which types can implement,
-somewhat like `Show`.
+### *View*
 
-`Component` is a dependent record type, which pairs an internal state
-type with a compatible handler. Then there is a library of reusable
-components which work on values of the `Component` type.
+`View` is an interface for drawing to the screen. Types which
+implement `View` are called *views*.
 
-Then there is `MainLoop`, which contains the machinery required to run
-a component as a UI.
+### *Event*
 
-## Geometry ##
+User input, such as a key press or mouse movement.
 
-Working with raw indices is annoying. This library provides:
+### *Handler*
 
-- `Pos`   A 2D Point
-- `Area`  A 2D Size
-- `Rect`  A 2D Rectangle
+A pure function which updates application state in response to an
+event.
 
-Various operations are implemented on these which allow shifting,
-scaling, and subdivision.
+### *Component*
 
-The math in this module is integer-based, as we're working with
-character cells rather than geometric points. If you're experiencing
-issues with layout, it's possible there's an off-by-one issue in this
-library.
+A high level notion which unifies *state*, *view*, and *handler* into
+a single value that can be composed with other components.
 
-## Painting ##
+## Events
 
-- `Context` models the state of the terminal window
-- Uses types from `TUI.Geometry`
-- While `View`s can paint anywhere they want, a `window` is supplied
-  for reference. Views can manipulate this rectangle and hand it off
-  to subviews.
+Right now there is only support for events of type `TUI.Key`. I would
+really like to allow support for events of arbitrary type, but am not
+sure how to do it. I have tried a couple times, but it seems to really
+pollute the API, or else lead to problems with type checking.
 
-In comparison to ncurses, this library does direct drawing to the
-terminal. And so, there are no intermediate buffers. Moreover, there
-is no optimization of screen updates.
-
-Instead of optimizing updates, I use
-[iTerm2's synchronous updates](https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec).
-This is protocol is ignored on unsupported terminals -- what you get
-may or may not be usable, as you'll likely experience flicker.
-
-I would like to support progressive enhancement, but I also want to
-support things like sixel graphics. To do optimized updates on legacy
-terminals, the library needs to buffer its output (in order to
-calculate deltas). For sixel data this gets tricky.
-
-I might include optional support for this style of rendering, if
-there's demand for it, but I don't want to mandate it at the moment.
-
-## Events ##
-
-Right now there is only support for events of type `TUI.Key`. I hope
-to add support for events of arbitrary type, but I might need some
-help with this.
+Note: If you think you can help with this, please open an issue and
+explain your approach. I'm open to breaking changes that will remove
+this limitation.
 
 There's a `MainLoop` interface for handling events. The library
 provides three mainloop implementations:
@@ -94,25 +65,141 @@ provides three mainloop implementations:
 - `InputShim`: decodes events as JSON records sent via stdin.
 - `Default`: chooses between `Base` and `InputShim` at runtime.
 
-My next priority is to implement a MainLoop on top of `idris2-linux`,
-as the `Base` mainloop doesn't allow for any concurrency. Now that we
-have `idris2-async`, and `idris2-uv`, it makes sense to include
-mainloop impls for each of those, as well.
+### Async Events ###
 
-Events are hard-coded to be ANSI keys. This is a huge limitation of
-the library at the moment. I could use help with that (hint hint).
+Both `Base` and `InputShim` (and therefore `Default`) block reading on
+stdin.
 
-## Components Produce Values ##
+A MainLoop built on top of `idris2-linux` is certainly possible, and
+would allow for a non-blocking event loop, which would be useful for a
+variety of reasons.
 
-A value of type `Component a` may yield a value of type `a`.
+However, until the `Component` library supports events of arbitrary
+type, there isn't much of a point in having an async event loop, as
+there's no way to deliver such events to these components.
 
-When you call `runComponent`, the component will run until it yields a
-value, at which point, the mainloop exits and returns the given value.
+### ANSI Key Sequences ###
 
-## Modal Components ##
+One aspect of event handling I know how to support is ANSI key
+sequence decoding. I just haven't got around to implementing the full
+spec. Expect breaking changes to the `Key` type as I add support for
+function, modifier keys, and other miscellaneous keys.
 
-When you use `runComponent`, there is an implicit stack of
-components. You can push a new component with the `Push` / `push`
-response. This top component will display until it yields a value. A
-callback provided to the `push` response merges the value back into
-the parent component.
+See also: this section in the [Roadmap](ROADMAP.md#kbd)
+
+## Geometry ##
+
+Working with raw row-major coordinates is annoying. This library
+provides:
+
+- `Pos`   A 2D Point
+- `Area`  A 2D Size
+- `Rect`  A 2D Rectangle
+
+Various operations are implemented on these which allow shifting,
+scaling, and subdivision, and painting using geometric values.
+
+The math in this module is integer-based, and sometimes a little
+confusing. We're working with character cells rather than geometric
+points. If you're experiencing issues with layout, it's possible
+there's an off-by-one issue in this library.
+
+If you stick to using the `pack*` family of functions for layout, you
+should not have to worry too much about this.
+
+## Painting ##
+
+- `Context` models the state of the terminal window
+- Uses types from `TUI.Geometry`
+
+In comparison to ncurses, this library does direct drawing to the
+terminal. And so, there are no intermediate buffers. Moreover, there
+is no optimization of screen updates. If all you want to do is direct
+rendering, you can just use the routines in `Painting` to get the job
+done. Use `runRaw` in `MainLoop` to pass in an explicit rendering
+
+Instead of optimizing updates, I use: [iTerm2's synchronous updates](
+https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec
+). Right now this is hard-coded, and there's no feature detection for
+it. Consider support for synchronized updates a soft requirement of
+the library for now.
+
+The said protocol is ignored on unsupported terminals -- what you get
+may or may not be usable: the more bytes written to standard out, the
+more likely you will experience flicker. This is why libraries like
+ncurses do differential updates.
+
+Why not do differential updates, then? Well, I don't want to have to
+buffer the output just yet. I want to explore sixels, 24-bit color,
+and other experimental features before I commit to the complexity and
+overhead of buffering output.
+
+Painting is fundamentally procedural, and painting order matters!
+
+## View ##
+
+`View` is an interface that's like 2D version of `Show`. A view
+knows how to paint itself into a terminal `Context`, in one of a fixed
+number of `State`s, and within a given `Rect`.
+
+That views stay within bounds is `*not*` enforced by this library, as
+there's no mechanism for it (see above). I may try to enforce this
+later, if I can think of the right mechanism with which to do so. For
+now, `View` implementations should try their best to voluntarily stay
+in bounds.
+
+A view can be drawn in an arbitrary window. A view should do its best
+to scale, responsively, into this window. If a library View
+implementation fails to scale responsibly, please open an
+issue. Likewise, if you can justify a good *exception* to this rule,
+please open an issue.
+
+## Layout ##
+
+The `Layout` module provides a family of functions for automatically
+aranging `View`s on screen. These rely on `View`s correctly reporting
+their `size`, so be sure and test your `View` implementations against
+these functions.
+
+## Components ##
+
+A component compbines a `View`able state and a key event handler.
+
+The library provides a family of components which implement common
+keyboard UI patterns, as well as some higher-order components
+(e.g. `Form`) which allow for composition of components.
+
+You can also define your own custom components.
+
+The main purpose of a `Component` is to produce a value of some
+concrete type. So, for example, a confirmation dialog might yield a
+`Bool`, while a spinner might yield a `String` or an element of a
+finite set, while a A form component might construct an entire record.
+
+Components exist for:
+- entering data
+- choosing items from a list
+- managing lists of values
+
+Some higher order components take a user-provided key handler, or may
+broadcast key vents to multiple subcomponents. In such cases, one
+needs to be aware of the the possibility of key collisions, and either
+guard against it, or exploit it.
+
+Components can also compose as *modally*, via the
+semantically-blocking `push` / `Push` response.
+
+## Feature Detection / Progressive {Enhancement / Graceful Degredation}  ##
+
+I would like to support this, but only after the library design has
+stablized somewhat.
+
+Until then there's no support for it whatever. Keep your target
+audience in mind when deciding what features to target. VTEs generally
+ingore escape sequences they don't understand, but not always.
+
+If you're trying to build a low-level OS tool, don't assume much more
+than what the linux console provides. If you're building something
+more developer focused, you can probably assume something on par with
+iTerm2. End users generally rely on the default terminal emulator, and
+are probably the hardest to support.
