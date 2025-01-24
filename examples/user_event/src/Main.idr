@@ -38,7 +38,7 @@ record UserEventDemo where
 View UserEventDemo where
   size _ = MkArea 1 1
   paint state window self = do
-    reverseVideo
+    sgr [SetReversed True]
     showTextAt self.pos $ show self.count
     sgr [Reset]
     window <- packBottom Normal window legend3

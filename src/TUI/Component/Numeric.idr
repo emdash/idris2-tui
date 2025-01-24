@@ -134,7 +134,7 @@ paintNumeric : Char -> State -> Rect -> Numeric a -> Context ()
 paintNumeric symbol state window self = do
   showCharAt window.nw symbol
   case state of
-      Focused => reverseVideo
+      Focused => sgr [SetReversed True]
       _       => pure ()
   showTextAt (window.nw + MkArea 2 0) (toString self)
   sgr [Reset]

@@ -63,7 +63,7 @@ namespace State
   export
   styleForState : State -> Context ()
   styleForState Normal   = sgr [Reset]
-  styleForState Focused  = reverseVideo
+  styleForState Focused  = sgr [SetReversed True]
   styleForState Disabled = sgr [SetStyle Faint]
 
   ||| Paint with the appropriate style for the given state.

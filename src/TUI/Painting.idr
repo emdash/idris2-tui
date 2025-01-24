@@ -224,17 +224,6 @@ export
 showCharAt : Pos -> Char -> Context ()
 showCharAt pos x = showTextAt pos (singleton x)
 
-||| Undoes the above
-export
-unreverseVideo : Context ()
-unreverseVideo = putStr "\ESC[27m"
-
-||| This attribute isn't part of the ANSI library in contrib, but is
-||| arguably more useful than setting explicit colors.
-export
-reverseVideo : Context ()
-reverseVideo = putStr "\ESC[7m"
-
 ||| effectful version for setting arbitrary SGR attributes
 export
 sgr : List SGR -> Context ()

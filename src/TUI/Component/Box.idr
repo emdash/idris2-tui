@@ -65,8 +65,7 @@ View Box where
   paint state window self = do
     case state of
       Focused => do
-        sgr self.attrs
-        reverseVideo
+        sgr $ SetReversed True :: self.attrs
       _ => sgr self.attrs
     fill self.char window
 
