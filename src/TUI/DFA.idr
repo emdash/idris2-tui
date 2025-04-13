@@ -78,6 +78,28 @@ record Automaton inputT outputT where
   start      : State
   transition : TransitionFn State inputT outputT
 
+||| Compute the next state for an abstract DFA.
+|||
+||| This API enables composing aribtrary DFAs.
+export
+next : TransitionFn (Automaton inputT outputT) inputT outputT
+next input self = case self.transition input self.state of
+  Discard               => Discard
+  Advance state output  => Advance ({state := state} self) output
+  Accept  output        => Accept output
+  Reject err            => Reject err
+
+export
+run : Automaton inputT outputT -> List inputT -> Either String (List outputT)
+run self [] = Right []
+run self (x :: xs) with (next x self)
+  _ | Discard                = run self xs
+  _ | Advance next' Nothing  = run next' xs
+  _ | Advance next' (Just o) = Right $ o :: !(run next' xs)
+  _ | Accept        Nothing  = Right $ []
+  _ | Accept        (Just o) = Right $ [o]
+  _ | Reject        err      = Left err
+
 ||| Construct a new DFA from an initial state and a transition function.
 export
 automaton
@@ -91,17 +113,6 @@ automaton start transition = MkAutomaton {
   start = start,
   transition = transition
 }
-
-||| Compute the next state for an abstract DFA.
-|||
-||| This API enables composing aribtrary DFAs.
-export
-next : TransitionFn (Automaton inputT outputT) inputT outputT
-next input self = case self.transition input self.state of
-  Discard               => Discard
-  Advance state output  => Advance ({state := state} self) output
-  Accept  output        => Accept output
-  Reject err            => Reject err
 
 ||| Reset a DFA to its initial state.
 export

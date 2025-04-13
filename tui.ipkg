@@ -10,6 +10,7 @@ depends = ansi
         , elab-util
         , quantifiers-extra
         , posix
+        , async-epoll
 
 modules = TUI
         , TUI
@@ -22,7 +23,7 @@ modules = TUI
         , TUI.Component.Menu
         , TUI.Component.Modal
         , TUI.Component.Numeric
-        --, TUI.Component.Pane
+      --, TUI.Component.Pane
         , TUI.Component.PushButton
         , TUI.Component.Table
         , TUI.Component.TextInput
@@ -36,9 +37,10 @@ modules = TUI
         , TUI.MainLoop
         , TUI.MainLoop.InputShim
         , TUI.MainLoop.Base
-	, TUI.MainLoop.Default
+        , TUI.MainLoop.Default
+        , TUI.MainLoop.Async
         , TUI.Painting
         , TUI.View
-	, TUI.Zipper.List
+        , TUI.Zipper.List
 
 sourcedir = "src"
