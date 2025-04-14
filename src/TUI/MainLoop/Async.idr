@@ -53,20 +53,25 @@ import System.Posix.File
 %default total
 
 
-mask : Num a => Neg a => Bits a => Index {a = a} -> a
-mask bits = (bit bits) - 1
+||| Generate a mask with the first `n` bits set.
+maskLow : Num a => Neg a => Bits a => Index {a = a} -> a
+maskLow bits = (bit bits) - 1
 
-(.maskHigh) : Num a => Neg a => Bits a => a -> Index {a = a} -> a
-(.maskHigh) x bits = shiftR (x .&. (complement $ mask bits)) bits
+||| Get the right bits from x, splitting at the given bit index.
+(.splitRight) : Num a => Neg a => Bits a => a -> Index {a = a} -> a
+(.splitRight) x bits = x .&. (maskLow bits)
 
-(.maskLow) : Num a => Neg a => Bits a => a -> Index {a = a} -> a
-(.maskLow) x bits = x .&. (mask bits)
+||| Get the left bits from x, splitting at the given bit index.
+(.splitLeft) : Num a => Neg a => Bits a => a -> Index {a = a} -> a
+(.splitLeft) x bits = shiftR (x .&. (complement $ maskLow bits)) bits
 
+||| Split x into two bit patterns at the given bit index.
 (.split) : Num a => Neg a => Bits a => a -> Index {a = a} -> (a, a)
-(.split) x bits = (x.maskHigh bits, x.maskLow bits)
+(.split) x bits = (x.splitLeft bits, x.splitRight bits)
 
+||| Shift `n` bits from `src` into `x` from the right.
 (.shiftIn) : Num a => Neg a => Bits a => Bits b => Cast b a => a -> Index {a = a} -> b -> a
-(.shiftIn) x n bits = (shiftL x n) .|. ((cast bits).maskLow n)
+(.shiftIn) x n src = (shiftL x n) .|. ((cast src).splitRight n)
 
 
 ||| A byte in a UTF-8 Sequence
@@ -99,6 +104,7 @@ data UTF8State : Type where
          -> Int
          -> UTF8State
 
+||| Helper to construct a sequence intro byte.
 seqIntro
   :  (len : Nat)
   -> {auto 0 _ : LTE len 3}
@@ -107,6 +113,7 @@ seqIntro
   -> UTF8Byte
 seqIntro (S k) @{ltelen} @{succlen} b = SeqIntro k ltelen b
 
+||| Helper to construct a sequence start decoder state.
 seqStart
   :  (len : Nat)
   -> {auto 0 _ : IsSucc len}
@@ -115,7 +122,7 @@ seqStart
   -> UTF8State
 seqStart len@(S k) @{isSucc} @{bounded} b = ByteSeq len (bounded) last (cast b)
 
-
+||| Classify a byte according to the UTF8 standard.
 classify : Bits8 -> UTF8Byte
 classify byte = case byte.split 7 of
   (0b0, char) => Ascii char
@@ -129,20 +136,24 @@ classify byte = case byte.split 7 of
          (0b11110, rest) => seqIntro 3 rest
          _ => InvalidByte byte
 
-transition : TransitionFn UTF8State UTF8Byte Char
-transition (Ascii b) Default = Accept $ Just $ chr $ cast b
-transition (SeqIntro k _ b) Default = Advance (seqStart (S k) b) $ Nothing
-transition (Continuation b) (ByteSeq l p n c) = case n of
-  FZ   => Accept $ Just $ chr $ cast (c.shiftIn 6 b)
-  FS n => Advance (ByteSeq l p (weaken n) (c.shiftIn 6 b)) Nothing
-transition _                 _       = Reject "Invalid Byte Sequence"
+replace : Maybe Char
+replace = Just $ chr 0xFFFD
 
-unicodeDecoder : Automaton Bits8 Char
-unicodeDecoder = loop $ 
-automaton Default decode
-  where
-    decode : TransitionFn UTF8State Bits8 Char
-    decode byte state = transition (classify byte) state
+||| UTF8 Decoder Transition function
+transition : TransitionFn UTF8State Bits8 Char
+transition byte state with (classify byte) | (state)
+  _ | (InvalidByte b)  | _       = Accept replace
+  _ | (Ascii b)        | Default = Accept $ Just $ chr $ cast b
+  _ | (SeqIntro k _ b) | Default = Advance (seqStart (S k) b) $ Nothing
+  _ | (Continuation b) | (ByteSeq l p n c) = case n of
+    FZ   => Accept $ Just $ chr $ cast (c.shiftIn 6 b)
+    FS n => Advance (ByteSeq l p (weaken n) (c.shiftIn 6 b)) Nothing
+  _ | _                |  _ = Reject replace
+
+||| UTF8 Decoder
+export
+utf8Decoder : Automaton Bits8 Char
+utf8Decoder = automaton Default transition
 
 testByteSeqs : List (List Bits8)
 testByteSeqs = [
@@ -151,7 +162,10 @@ testByteSeqs = [
   [225, 184, 146],
   [226, 147, 128],
   [227, 130, 128],
-  [240, 159, 156, 184]
+  [240, 159, 156, 184],
+  [240, 159, 97, 184],
+  [97, 184],
+  [0xE1, 0xA0, 0x20]
 ]
 
 {-
