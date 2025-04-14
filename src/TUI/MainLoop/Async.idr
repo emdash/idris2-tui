@@ -140,6 +140,8 @@ replace : Maybe Char
 replace = Just $ chr 0xFFFD
 
 ||| UTF8 Decoder Transition function
+|||
+||| XXX: this treats a sequence like E1 A0 20 as a single error.
 transition : TransitionFn UTF8State Bits8 Char
 transition byte state with (classify byte) | (state)
   _ | (InvalidByte b)  | _       = Accept replace
@@ -148,13 +150,14 @@ transition byte state with (classify byte) | (state)
   _ | (Continuation b) | (ByteSeq l p n c) = case n of
     FZ   => Accept $ Just $ chr $ cast (c.shiftIn 6 b)
     FS n => Advance (ByteSeq l p (weaken n) (c.shiftIn 6 b)) Nothing
-  _ | _                |  _ = Reject replace
+  _ | _                |  _ = Accept replace
 
 ||| UTF8 Decoder
 export
 utf8Decoder : Automaton Bits8 Char
 utf8Decoder = automaton Default transition
 
+||| XXX: keep these here until I get around to writing proper test cases.
 testByteSeqs : List (List Bits8)
 testByteSeqs = [
   [97],
@@ -165,10 +168,11 @@ testByteSeqs = [
   [240, 159, 156, 184],
   [240, 159, 97, 184],
   [97, 184],
-  [0xE1, 0xA0, 0x20]
+  [0xE1, 0xA0, 0x20] -- xxx: failing, treats as single error.
+  -- xxx: need *many* more test cases.
 ]
 
-{-
+||| XXX: keep this around until I get around to writing proper test cases.
 testChars : List (Maybe Char)
 testChars = [
   Just $ 'a',
@@ -179,6 +183,34 @@ testChars = [
   Just $ chr 0x1F738
 ]
 
+covering
+stdin : Has Errno es => Channel String -> Async Poll es ()
+stdin chan = go utf8Decoder
+where
+  getByte : ByteString -> Maybe Bits8
+  getByte bs = case unpack bs of
+    [byte] => Just byte
+    _ => Nothing
+
+  go : Automaton Bits8 Char -> Async Poll es ()
+  go decoder = do
+    byte <- readnb Stdin ByteString 1
+    case getByte byte of
+      Nothing => go decoder
+      Just byte => case next byte decoder of
+        Discard => go decoder
+        Advance next Nothing => go next
+        Advance next (Just c) => do
+          Sent <- send chan $ singleton c | _ => pure ()
+          go next
+        Accept Nothing => go (reset decoder)
+        Accept (Just c) => do
+          Sent <- send chan $ singleton c | _ => pure ()
+          go $ reset decoder
+        Reject err => do
+          Sent <- send chan err | _ => pure ()
+          go $ reset decoder
+
 countSeconds : Nat -> Channel String -> Async Poll es ()
 countSeconds 0 chan = do
   _ <- send chan "Timer Expired"
@@ -187,17 +219,6 @@ countSeconds (S k) chan = do
   Sent <- send chan "\{show $ S k} s left" | _ => pure ()
   sleep 1.s
   countSeconds k chan
-
-covering
-stdin : Has Errno es => Channel String -> Async Poll es ()
-stdin chan = do
-  bytes <- readnb Stdin ByteString 4
-  resp <- case decodeUTF8 $ unpack bytes of
-    Nothing => send chan $ "Invalid byte sequence \{show bytes}"
-    Just char => send chan $ singleton char
-  case resp of
-    Sent => stdin chan
-    _ => pure ()
 
 covering
 mainloop : Channel String -> Async Poll es ()
