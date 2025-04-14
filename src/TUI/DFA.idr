@@ -172,8 +172,9 @@ where
 ||| Compose two automata by chaining the output.
 |||
 ||| XXX: make sure this logic is sensible.
-(.) : Automaton a b -> Automaton b c -> Automaton a c
-(.) fst snd = automaton (fst, snd) chain
+export
+(.) : Automaton b c -> Automaton a b -> Automaton a c
+(.) snd fst = automaton (fst, snd) chain
   where
     chain : TransitionFn (Automaton a b, Automaton b c) a c
     chain input self = case next input (Builtin.fst self) of

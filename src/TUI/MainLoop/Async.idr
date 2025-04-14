@@ -32,10 +32,7 @@ module TUI.MainLoop.Async
 
 import Data.Bits
 import Data.ByteString
-import Data.Nat
-import Data.SnocList
 import Data.String
-import Data.Vect
 import IO.Async.File
 import IO.Async.Loop.Posix
 import IO.Async.Loop.Poller
@@ -45,6 +42,9 @@ import IO.Async.Posix
 import IO.Async.Signal
 import TUI.DFA
 import TUI.Event
+import TUI.Key
+import TUI.MainLoop
+import TUI.Painting
 import System
 import System.File.Error
 import System.Posix.File
@@ -105,6 +105,8 @@ data UTF8State : Type where
          -> UTF8State
 
 ||| Helper to construct a sequence intro byte.
+|||
+||| The required proofs are captured by proof search.
 seqIntro
   :  (len : Nat)
   -> {auto 0 _ : LTE len 3}
@@ -114,6 +116,8 @@ seqIntro
 seqIntro (S k) @{ltelen} @{succlen} b = SeqIntro k ltelen b
 
 ||| Helper to construct a sequence start decoder state.
+|||
+||| The required proofs are captured by proof search.
 seqStart
   :  (len : Nat)
   -> {auto 0 _ : IsSucc len}
@@ -122,46 +126,48 @@ seqStart
   -> UTF8State
 seqStart len@(S k) @{isSucc} @{bounded} b = ByteSeq len (bounded) last (cast b)
 
-||| Classify a byte according to the UTF8 standard.
-classify : Bits8 -> UTF8Byte
-classify byte = case byte.split 7 of
-  (0b0, char) => Ascii char
-  _ => case byte.split 6 of
-   (0b10, rest) => Continuation rest
-   _ => case byte.split 5 of
-     (0b110, rest) => seqIntro 1 rest
-     _ => case byte.split 4 of
-       (0b1110, rest) => seqIntro 2 rest
-       _ => case byte.split 3 of
-         (0b11110, rest) => seqIntro 3 rest
-         _ => InvalidByte byte
-
-replace : Maybe Char
-replace = Just $ chr 0xFFFD
-
-||| UTF8 Decoder Transition function
-|||
-||| XXX: this treats a sequence like E1 A0 20 as a single error.
-transition : TransitionFn UTF8State Bits8 Char
-transition byte state with (classify byte) | (state)
-  _ | (InvalidByte b)  | _       = Accept replace
-  _ | (Ascii b)        | Default = Accept $ Just $ chr $ cast b
-  _ | (SeqIntro k _ b) | Default = Advance (seqStart (S k) b) $ Nothing
-  _ | (Continuation b) | (ByteSeq l p n c) = case n of
-    FZ   => Accept $ Just $ chr $ cast (c.shiftIn 6 b)
-    FS n => Advance (ByteSeq l p (weaken n) (c.shiftIn 6 b)) Nothing
-  _ | _                |  _ = Accept replace
-
 ||| UTF8 Decoder
 export
 utf8Decoder : Automaton Bits8 Char
-utf8Decoder = automaton Default transition
+utf8Decoder = loop $ automaton Default transition
+where
+  ||| Classify a byte according to the UTF8 standard.
+  classify : Bits8 -> UTF8Byte
+  classify byte = case byte.split 7 of
+    (0b0, char) => Ascii char
+    _ => case byte.split 6 of
+     (0b10, rest) => Continuation rest
+     _ => case byte.split 5 of
+       (0b110, rest) => seqIntro 1 rest
+       _ => case byte.split 4 of
+         (0b1110, rest) => seqIntro 2 rest
+         _ => case byte.split 3 of
+           (0b11110, rest) => seqIntro 3 rest
+           _ => InvalidByte byte
+
+  ||| Errors in the input stream will be replaced with this codepoint.
+  replace : Maybe Char
+  replace = Just $ chr 0xFFFD
+
+  ||| UTF8 Decoder Transition function
+  |||
+  ||| XXX: this treats a sequence like E1 A0 20 as a single error.
+  transition : TransitionFn UTF8State Bits8 Char
+  transition byte state with (classify byte) | (state)
+    _ | (InvalidByte b)  | _       = Accept replace
+    _ | (Ascii b)        | Default = Accept $ Just $ chr $ cast b
+    _ | (SeqIntro k _ b) | Default = Advance (seqStart (S k) b) $ Nothing
+    _ | (Continuation b) | (ByteSeq l p n c) = case n of
+      FZ   => Accept $ Just $ chr $ cast (c.shiftIn 6 b)
+      FS n => Advance (ByteSeq l p (weaken n) (c.shiftIn 6 b)) Nothing
+    _ | _                |  _ = Accept replace
+
 
 ||| XXX: keep these here until I get around to writing proper test cases.
 testByteSeqs : List (List Bits8)
 testByteSeqs = [
-  [97],
-  [199, 164],
+  [97],                  -- "a"
+  [199, 164],            -- "\484"
   [225, 184, 146],
   [226, 147, 128],
   [227, 130, 128],
@@ -183,183 +189,88 @@ testChars = [
   Just $ chr 0x1F738
 ]
 
+record EventSource (evts : List Type) where
+  constructor On
+  eventT : Type
+  thread : Channel (HSum evts) -> Async Poll [Errno] ()
+
 covering
-stdin : Has Errno es => Channel String -> Async Poll es ()
-stdin chan = go utf8Decoder
+stdin : Has Key evts => EventSource evts
+stdin = On Key $ go (ansiDecoder . utf8Decoder)
 where
   getByte : ByteString -> Maybe Bits8
   getByte bs = case unpack bs of
     [byte] => Just byte
     _ => Nothing
 
-  go : Automaton Bits8 Char -> Async Poll es ()
-  go decoder = do
+  go : Automaton Bits8 Key -> Channel (HSum evts) -> Async Poll [Errno] ()
+  go decoder chan = do
     byte <- readnb Stdin ByteString 1
     case getByte byte of
-      Nothing => go decoder
+      Nothing => go decoder chan
       Just byte => case next byte decoder of
-        Discard => go decoder
-        Advance next Nothing => go next
-        Advance next (Just c) => do
-          Sent <- send chan $ singleton c | _ => pure ()
-          go next
-        Accept Nothing => go (reset decoder)
-        Accept (Just c) => do
-          Sent <- send chan $ singleton c | _ => pure ()
-          go $ reset decoder
+        Discard => go decoder chan
+        Advance next Nothing => go next chan
+        Advance next (Just key) => do
+          Sent <- send chan $ inject key | _ => pure ()
+          go next chan
+        Accept Nothing => go (reset decoder) chan
+        Accept (Just key) => do
+          Sent <- send chan $ inject key | _ => pure ()
+          go (reset decoder) chan
         Reject err => do
-          Sent <- send chan err | _ => pure ()
-          go $ reset decoder
+          -- XXX: how do I log errors?
+          -- Sent <- send chan err | _ => pure ()
+          go (reset decoder) chan
 
-countSeconds : Nat -> Channel String -> Async Poll es ()
-countSeconds 0 chan = do
-  _ <- send chan "Timer Expired"
-  close chan
-countSeconds (S k) chan = do
-  Sent <- send chan "\{show $ S k} s left" | _ => pure ()
-  sleep 1.s
-  countSeconds k chan
+countSeconds : Has Nat evts => Nat -> EventSource evts
+countSeconds n = On Nat $ go n
+where
+  go : Nat -> Channel (HSum evts) -> Async Poll errs ()
+  go 0 chan = close chan
+  go n@(S k) chan = do
+    Sent <- send chan $ inject n | _ => pure ()
+    sleep 1.s
+    go k chan
 
 covering
-mainloop : Channel String -> Async Poll es ()
-mainloop chan = do
-  Just msg <- receive chan | _ => pure ()
-  stdoutLn $ show msg
-  mainloop chan
+run : All Show evts => List (EventSource evts) -> IO ()
+run srcs = epollApp $ handle [\e => stderrLn "Error \{e}"] go
+where
+  render : Channel (HSum evts) -> Async Poll es ()
+  render chan = do
+    Just msg <- receive chan | _ => pure ()
+    stdoutLn $ show msg
+    render chan
+
+  spawn
+    :  Channel (HSum evts)
+    -> (src : EventSource evts)
+    -> Async Poll [Errno] ()
+  spawn chan src = src.thread chan
+
+  renderThread : Channel (HSum evts) -> Async Poll [Errno] ()
+  renderThread chan = guarantee (render chan) $ do
+    stderrLn "timer exited"
+    render chan
+
+  go : Async Poll [Errno] ()
+  go = use1 rawMode $ \_ => do
+    chan <- channel 1
+    race () (render chan :: (spawn chan <$> srcs))
 
 export covering
 main : IO ()
-main = epollApp $ handle [\e => stderrLn "Error \{e}"] run
-where
-  run : Async Poll [Errno] ()
-  run = use1 rawMode $ \_ => do
-    chan <- channel 1
-    race () [
-      stdin chan,
-      countSeconds 10 chan,
-      guarantee (mainloop chan) $ do
-        stderrLn "timer exited"
-        mainloop chan
-    ]
+main = run sources
+  where
+    sources : List (EventSource [Key, Nat])
+    sources = [stdin, countSeconds 10]
 
 {-
-
-import TUI.DFA
-import TUI.Event
-import TUI.Key
-import TUI.MainLoop
-import TUI.Painting
-
-%default total
-
-
-{-
-||| Decodes the given event type from Stdin.
-|||
-||| The tag identifies the event type, whose contents are then decoded
-||| from JSON. The resulting Idris value is then passed to a decoder
-||| state machine.
 export
-record EventSource eventT where
-  constructor On
-  0 RawEventT : Type
-  tag         : String
-  {auto impl  : FromJSON RawEventT}
-  decoder     : IORef $ Automaton RawEventT eventT
-
-||| A MainLoop which receive events as a stream of JSON records on STDIN.
-|||
-||| An external process is responsible for collecting events and
-||| passing them to the application. See `input-shim.py` for an example.
-|||
-||| This MainLoop instance is useful for testing and debugging.
-|||
-||| XXX: this code is a bit more general than necessary at the
-||| moment. It looks as if it supports multiple distinct event types,
-||| however, it doesn't.
-export
-record InputShim (events : List Type) where
-  constructor MkInputShim
-  sources : All EventSource events
-
-||| Construct an EventSource for an event that must be further decoded.
-export
-decoded
-  :  {0 rawEventT, eventT : Type}
-  -> FromJSON rawEventT
-  => String
-  -> (decoder : Automaton rawEventT eventT)
-  -> IO (EventSource eventT)
-decoded tag decoder = pure $ On {
-  RawEventT = rawEventT,
-  tag       = tag,
-  decoder   = !(newIORef decoder)
-}
-
-||| Construct an event source for an event that can be used directly.
-export
-raw
-  :  {0 eventT : Type}
-  -> FromJSON eventT
-  => String
-  -> IO (EventSource eventT)
-raw tag = decoded tag identity
-
-||| An event source which decodes raw `Char`s into `Key` values.
-export
-onAnsiKey : IO (EventSource Key)
-onAnsiKey = decoded "Stdin" ansiDecoder
-
-||| A MainLoop which handles only Ansi keys
-export
-inputShim : IO (InputShim [Key])
-inputShim = pure $ MkInputShim [!onAnsiKey]
-
-||| Decode the top-level record in the given JSON.
-|||
-||| XXX: Probably the JSON package can work with HSum more directly,
-||| but I didn't want to go down that rabbit hole, so I wrote it
-||| manually.
-match : FromJSON a => String -> JSON -> Either String a
-match expected (JObject [
-  ("tag", JString got),
-  ("contents", (JArray [rest]))
-]) =
-  if expected == got
-  then case fromJSON rest of
-    Left err => Left $ show err
-    Right v  => Right v
-  else Left "Incorrect tag"
-match _ _ = Left "Wrong shape"
-
-||| Try each handler in succession until one decodes an event.
-|||
-||| Returns the event as an HSum over all the event sources.
-export
-decodeNext
-  :  String
-  -> All EventSource events
-  -> IO $ Either String (HSum events)
-decodeNext e sources = case parseJSON Virtual e of
-    Left  err    => pure $ Left "Parse Error: \{show err}"
-    Right parsed => loop parsed sources
-where
-  loop
-    : JSON
-    -> All EventSource a
-    -> IO (Either String (HSum a))
-  loop parsed []        = pure $ Left "Unhandled event: \{e}"
-  loop parsed (x :: xs) = case match @{x.impl} x.tag parsed of
-      Left  err => pure $ There <$> !(loop parsed xs)
-      Right evt => case next evt !(readIORef x.decoder) of
-        Discard  => pure $ Left "Event discarded."
-        Advance state output => do
-          writeIORef x.decoder state
-          case output of
-            Nothing     => pure $ Left "No event decoded."
-            Just event  => pure $ Right $ inject event
-        Accept y => pure $ Left $ "Toplevel event decoder in final state!"
-        Reject err => pure $ Left "Decode error: \{err}"
+record AsyncMain (errs : List Type) (events : List Type) where
+  constructor MkAsyncMain
+  sources : List (EventSource errs events)
 
 ||| Try to handle an event using one of the given handlers.
 |||
@@ -375,7 +286,7 @@ handleEvent (Here  x)  state (h :: hs) = h x state
 handleEvent (There xs) state (h :: hs) = handleEvent xs state hs
 
 export covering
-MainLoop (InputShim [Key]) where
+MainLoop (AsyncMain [Errno] [Key]) where
   runRaw self onKey render init = do
     -- input-shim.py must put the terminal in raw mode
     putStrLn ""
