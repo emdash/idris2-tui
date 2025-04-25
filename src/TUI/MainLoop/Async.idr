@@ -34,7 +34,6 @@ import Data.ByteString
 import Data.IORef
 import Data.String
 import IO.Async.Channel
-import IO.Async.Type
 import IO.Async.File
 import IO.Async.Loop.Posix
 import IO.Async.Loop.Poller
