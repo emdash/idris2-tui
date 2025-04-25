@@ -24,12 +24,18 @@ data Counter
   | Reset
 %runElab derive "Counter" [FromJSON]
 
-||| A counter event source.
+||| A user-defined event source.
+|||
+||| It sends a sequence of `n` `Inc` events, then a `Reset` event,
+||| then repeats.
+covering
 counter : Has Counter evts => Nat -> EventSource evts
 counter n = On $ go n
 where
   go : Nat -> Channel (HSum evts) -> Async Poll errs ()
-  go 0 chan = close chan
+  go 0 chan = do
+    Sent <- send chan $ inject Main.Reset | _ => pure ()
+    go n chan
   go n@(S k) chan = do
     Sent <- send chan $ inject Inc | _ => pure ()
     sleep 1.s
@@ -88,7 +94,7 @@ userEventDemo pos = component {
   ||| Handle counter events.
   onCounter : Single.Handler UserEventDemo UserEventDemo Counter
   onCounter Inc   self = update $ {count $= S} self
-  onCounter Reset self = update $ {count $= S} self
+  onCounter Reset self = update $ {count := 0} self
 
   ||| Handle key presses.
   onKey : Single.Handler UserEventDemo UserEventDemo Key
