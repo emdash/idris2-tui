@@ -33,10 +33,11 @@ module TUI.MainLoop.Async
 import Data.ByteString
 import Data.IORef
 import Data.String
-import IO.Async.Channel
+import public IO.Async
+import public IO.Async.Channel
 import IO.Async.File
-import IO.Async.Loop.Posix
-import IO.Async.Loop.Poller
+import public IO.Async.Loop.Posix
+import public IO.Async.Loop.Poller
 import IO.Async.Loop.Epoll
 import IO.Async.Posix
 import IO.Async.Signal
@@ -96,20 +97,6 @@ where
           -- XXX: how do I log errors?
           -- Sent <- send chan err | _ => pure ()
           go (reset decoder) chan
-
-||| A counter event source.
-|||
-||| It will count down from `n`, injecting the count event. This is
-||| mainly used for testing the implementation.
-countSeconds : Has Nat evts => Nat -> EventSource evts
-countSeconds n = On $ go n
-where
-  go : Nat -> Channel (HSum evts) -> Async Poll errs ()
-  go 0 chan = close chan
-  go n@(S k) chan = do
-    Sent <- send chan $ inject n | _ => pure ()
-    sleep 1.s
-    go k chan
 
 ||| Try to handle an event using one of the given handlers.
 |||
@@ -190,6 +177,10 @@ export
 record AsyncMain (events : List Type) where
   constructor MkAsyncMain
   sources : List (EventSource events)
+
+covering export
+asyncMain : Has Key evts => List (EventSource evts) -> AsyncMain evts
+asyncMain sources = MkAsyncMain (stdin :: sources)
 
 export covering
 {evts : List Type} -> MainLoop (AsyncMain evts) (HSum evts) where

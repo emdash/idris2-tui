@@ -4,7 +4,10 @@ module Main
 import Derive.Prelude
 import TUI
 import TUI.MainLoop
-import TUI.MainLoop.InputShim
+import TUI.MainLoop.Async
+import IO.Async
+import IO.Async.Loop.Poller
+import IO.Async.Loop.Posix
 import JSON.Derive
 
 
@@ -20,6 +23,18 @@ data Counter
   = Inc
   | Reset
 %runElab derive "Counter" [FromJSON]
+
+||| A counter event source.
+counter : Has Counter evts => Nat -> EventSource evts
+counter n = On $ go n
+where
+  go : Nat -> Channel (HSum evts) -> Async Poll errs ()
+  go 0 chan = close chan
+  go n@(S k) chan = do
+    Sent <- send chan $ inject Inc | _ => pure ()
+    sleep 1.s
+    go k chan
+
 
 ||| The demo state consists of a cursor position and a count.
 |||
@@ -89,12 +104,7 @@ partial export
 main : IO ()
 main = do
   window   <- screen
-  -- start with the basic event loop
-  keyboard <- inputShim
-  -- then append our custom event source to it.
-  counter  <- raw {eventT = Counter} "Counter"
-  let mainLoop = keyboard.addEvent counter
-  -- now we can run as we would any stock component.
+  let mainLoop : AsyncMain [Counter, Key] = asyncMain [(counter 10)]
   case !(runComponent mainLoop $ userEventDemo window.center) of
     Nothing => putStrLn "User Canceled"
     Just choice => putStrLn $ "User selected: \{show choice}"
