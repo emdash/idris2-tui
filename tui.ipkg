@@ -10,6 +10,7 @@ depends = ansi
         , elab-util
         , quantifiers-extra
         , posix
+	, async
         , async-epoll
 
 modules = TUI

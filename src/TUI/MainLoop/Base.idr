@@ -48,6 +48,7 @@ import TUI.Painting
 
 %default total
 
+
 -- namespace used to make type of `Base` opaque within remainder of this file.
 namespace Base
   ||| A mainloop which depends only on base.
