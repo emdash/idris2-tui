@@ -71,7 +71,7 @@ interface MainLoop a e where
   runRaw
     :  (mainloop : a)
     -> (onEvent  : Event.Handler stateT valueT e)
-    -> (render   : stateT  -> Context ())
+    -> (render   : Rect -> stateT -> Context ())
     -> (init     : stateT)
     -> IO (Maybe valueT)
 
@@ -89,7 +89,7 @@ runView
 runView mainloop onEvent init = runRaw {
   mainloop = mainloop,
   onEvent  = onEvent,
-  render   = View.paint Focused !screen,
+  render   = View.paint Focused,
   init     = init
 }
 

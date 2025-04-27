@@ -199,11 +199,12 @@ export covering
     loop sources state = do
       beginSyncUpdate
       clearScreen
-      present (!screen).size $ do
+      window <- screen
+      present window.size $ do
         -- all drawing operations now live in the `Context` monad,
         -- so they must be nested under the `present` IO action.
         moveTo origin
-        render state
+        render window state
       endSyncUpdate
       fflush stdout
       next <- getLine

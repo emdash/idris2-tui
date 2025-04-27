@@ -32,9 +32,11 @@
 module TUI.Geometry
 
 
+import Data.Bits
 import Derive.Prelude
 import System
 import TUI.Util
+import TUI.Prim
 
 
 %language ElabReflection
@@ -367,20 +369,18 @@ export
 r80x24 : Rect
 r80x24 = MkRect origin (MkArea 80 24)
 
+export
+getWinSize : IO Area
+getWinSize = do
+  rawBits <- primIO prim__getWinSize
+  let high = rawBits `shiftR` 16 .&. 0xFFFF
+  let low  = rawBits .&. 0xFFFF
+  pure $ MkArea (cast low) (cast high)
+
 ||| Get the window geometry
-|||
-||| XXX: handle SIGWINCH
 export
 screen : HasIO io => io Rect
-screen = do
-  width  <- parseEnv "COLUMNS" 80 parsePositive
-  height <- parseEnv  "LINES"  24 parsePositive
-  pure $ MkRect origin $ MkArea (width `minus` 1) (height `minus` 1)
-where
-  parseEnv : String -> a -> (String -> Maybe a) -> io a
-  parseEnv key def parse = case !(getEnv key) of
-    Just value => pure $ fromMaybe def $ parse value
-    Nothing    => pure def
+screen = pure $ MkRect origin !(liftIO getWinSize)
 
 ||| shrink the rectangle by the given size
 export
