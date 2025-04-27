@@ -62,6 +62,11 @@ public export
 0 ErrorHandler : Type -> Type -> Type
 ErrorHandler ret err = err -> Async Poll [] ret
 
+||| Called within an event source to post to an event queue.
+public export
+0 PostEventFn : List Type -> Type
+PostEventFn evts = HSum evts -> Async Poll [] ()
+
 ||| Handle an error by logging it.
 export
 logError : Interpolation err => ErrorHandler () err
@@ -92,7 +97,7 @@ handling errs handlers computation  = handle handlers computation
 public export
 record EventSource (evts : List Type) where
   constructor On
-  thread : Channel (HSum evts) -> Async Poll [] ()
+  thread : PostEventFn evts -> Async Poll [] ()
 
 ||| An event source which decodes key presses from the controlling TTY.
 export covering
@@ -114,27 +119,37 @@ where
   |||
   ||| Stdin is read byte-by-byte, and sent through the ansi
   ||| decoder. If a key is decoded, it is sent to the event queue.
-  loop : Automaton Bits8 Key -> Channel (HSum evts) -> Async Poll [Errno] ()
-  loop decoder chan = case !getByte of
-    Nothing => loop decoder chan
+  loop : Automaton Bits8 Key -> PostEventFn evts -> Async Poll [Errno] ()
+  loop decoder post = case !getByte of
+    Nothing => loop decoder post
     Just byte => case next byte decoder of
-      Discard => loop decoder chan
-      Advance next Nothing => loop next chan
+      Discard => loop decoder post
+      Advance next Nothing => loop next post
       Advance next (Just key) => do
-        Sent <- send chan $ inject key | _ => pure ()
-        loop next chan
-      Accept Nothing => loop (reset decoder) chan
+        weakenErrors $ post $ inject key
+        loop next post
+      Accept Nothing => loop (reset decoder) post
       Accept (Just key) => do
-        Sent <- send chan $ inject key | _ => pure ()
-        loop (reset decoder) chan
+        weakenErrors $ post $ inject key
+        loop (reset decoder) post
       Reject err => do
         -- XXX: how do we want to handle this?
-        loop (reset decoder) chan
+        loop (reset decoder) post
 
   ||| Put stdin in raw-mode, ensuring proper cleanup. Then enter mainloop.
-  go : Automaton Bits8 Key -> Channel (HSum evts) -> Async Poll [] ()
-  go decoder chan = handling [Errno] [logError] $ use1 rawMode $ \_=> do
-    loop decoder chan
+  go : Automaton Bits8 Key -> PostEventFn evts -> Async Poll [] ()
+  go decoder post = handling [Errno] [logError] $ use1 rawMode $ \_=> do
+    loop decoder post
+
+||| Like epollApp, but we also allow handling of SIGWINCH.
+covering
+epollRun : Async Poll [] () -> IO ()
+epollRun prog = do
+  n <- asyncThreads
+  app n [SIGINT, SIGWINCH] epollPoller cprog
+where
+  cprog : Async Poll [] ()
+  cprog = race () [prog, dropErrs {es = [Errno]} $ onSignal SIGINT $ pure ()]
 
 ||| I had to split this out in order to get it to typecheck properly.
 |||
@@ -151,49 +166,71 @@ run
   -> {0 evts : List Type}
   -> (sources : List (EventSource evts))
   -> Event.Handler stateT valueT (HSum evts)
-  -> (render : stateT -> Context ())
+  -> (render : Rect -> stateT -> Context ())
   -> stateT
   -> IO (Maybe valueT)
 run srcs onEvent render state = do
   -- we need a mutable ref to store the return value,
   -- as there's no entry point for fibers that return a value.
-  ret <- IORef.newIORef Nothing
+  ret    <- IORef.newIORef Nothing
+  window <- screen
   -- enter async mainloop, handling errno by logging.
-  epollApp $ handling [Errno] [logError] $ do
-    events  <- channel 1
-    sources <- start $ race () $ spawn events <$> srcs
-    loop ret state events
+  epollRun $ handling [Errno] [logError] $ do
+    events   <- channel 1
+    sources  <- start $ race () $ spawn events <$> srcs
+    sigwinch <- start $ winch_watch events
+    loop ret window state events
     cancel sources
+    cancel sigwinch
     close events
   readIORef ret
 where
+  postEvent : Channel (Either Rect (HSum evts)) -> PostEventFn evts
+  postEvent chan event = do
+    case !(send chan $ Right event) of
+      Sent => pure ()
+      _    => pure ()
+
+  ||| Watch for sigwinch, updating the window size when it is received.
+  |||
+  ||| This avoids having to issue the ioctl before every frame, as is
+  ||| done in the non-async mainloop.
+  winch_watch : Channel (Either Rect (HSum evts)) -> Async Poll [Errno] ()
+  winch_watch chan = do
+    ignore $ awaitSignals [SIGWINCH]
+    Sent <- send chan $ Left !screen | _ => pure ()
+    winch_watch chan
+
   ||| The main rendering loop.
   loop
-    : IORef.IORef (Maybe valueT)
+    :  IORef.IORef (Maybe valueT)
+    -> Rect
     -> stateT
-    -> Channel (HSum evts)
-    -> Async Poll es ()
-  loop ret state chan = do
+    -> Channel (Either Rect (HSum evts))
+    -> Async Poll [Errno] ()
+  loop ret window state chan = do
     beginSyncUpdate
     clearScreen
-    present (!screen).size $ do
+    present window.size $ do
       moveTo origin
-      render state
+      render window state
     endSyncUpdate
     -- xxx: may need to upstream nonblocking version of this to async.
+    --      or we could try setting stdin to SYNC mode.
     fflush stdout
     case !(receive chan) of
-      Just event => case !(liftIO $ onEvent event state) of
-        Left  next => loop ret next chan
+      Nothing            => pure ()
+      Just (Left window) => loop ret window state chan
+      Just (Right event) => case !(liftIO $ onEvent event state) of
+        Left  next => loop ret window next chan
         Right res  => writeIORef ret res
-      Nothing => loop ret state chan
 
   ||| helper function to spawn each input source.
   spawn
-    :  Channel (HSum evts)
+    :  Channel (Either Rect (HSum evts))
     -> (src : EventSource evts)
     -> Async Poll [] ()
-  spawn chan src = src.thread chan
+  spawn chan src = src.thread $ postEvent chan
 
 ||| A MainLoop instance based on `async-epoll`.
 |||

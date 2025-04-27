@@ -6,6 +6,7 @@ import TUI
 import TUI.MainLoop
 import TUI.MainLoop.Async
 import IO.Async
+import IO.Async.Signal
 import IO.Async.Loop.Poller
 import IO.Async.Loop.Posix
 import IO.Async.Loop.Epoll
@@ -33,15 +34,14 @@ covering
 counter : Has Counter evts => Nat -> EventSource evts
 counter n = On $ go n
 where
-  go : Nat -> Channel (HSum evts) -> Async Poll errs ()
-  go 0 chan = do
-    Sent <- send chan $ inject Main.Reset | _ => pure ()
-    go n chan
-  go n@(S k) chan = do
-    Sent <- send chan $ inject Inc | _ => pure ()
+  go : Nat -> PostEventFn evts -> Async Poll [] ()
+  go 0 post = do
+    post $ inject Main.Reset
+    go n post
+  go n@(S k) post = do
+    post $ inject Inc
     sleep 1.s
-    go k chan
-
+    go k post
 
 ||| The demo state consists of a cursor position and a count.
 |||
@@ -60,6 +60,7 @@ record UserEventDemo where
 View UserEventDemo where
   size _ = MkArea 1 1
   paint state window self = do
+    showTextAt window.nw $ show window.size
     sgr [SetReversed True]
     showTextAt self.pos $ show self.count
     sgr [Reset]
@@ -107,11 +108,13 @@ userEventDemo pos = component {
   onKey Escape self = exit
   onKey _      self = ignore
 
+||| Main entry point
 partial export
 main : IO ()
 main = do
-  window   <- screen
+  -- construct an async mainloop, specfying the additional counter event source.
   let mainLoop := asyncMain {evts = [Counter, Key]} [(counter 10)]
-  case !(runComponent mainLoop $ userEventDemo window.center) of
+  -- create the application state, and run the component.
+  case !(runComponent mainLoop $ userEventDemo (!screen).center) of
     Nothing => putStrLn "User Canceled"
     Just choice => putStrLn $ "User selected: \{show choice}"
