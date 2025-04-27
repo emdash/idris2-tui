@@ -232,3 +232,6 @@ export covering
       restoreCursor
       cursor True
       altScreen False
+      -- XXX: this shouldn't be necessary, but the async raw mode
+      -- idiom isn't working. We'll leave it like this for now.
+      resetRawMode
