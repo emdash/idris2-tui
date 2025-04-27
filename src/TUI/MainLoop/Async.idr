@@ -57,60 +57,84 @@ import System.Posix.File
 %default total
 
 
-||| An async producer of events.
+||| This is the type expected by `handle`.
+public export
+0 ErrorHandler : Type -> Type -> Type
+ErrorHandler ret err = err -> Async Poll [] ret
+
+||| Handle an error by logging it.
+export
+logError : Interpolation err => ErrorHandler () err
+logError err = stderrLn "Unhandled error: \{err}"
+
+||| A more convenient wrapper around handler, with explicit error list.
+|||
+||| `handle` doesn't work well with inline do blocks, because idris
+||| can't always infer the error type.
+export
+handling
+  :  (errs : List Type)
+  -> All (ErrorHandler ret) errs
+  -> Async Poll errs ret
+  -> Async Poll []   ret
+handling errs handlers computation  = handle handlers computation
+
+||| A producer of events.
+|||
+||| This is an asynchronous computation which should post events to
+||| the given event queue, which is an async `Channel`.
+|||
+||| While Async itself supports arbitrary errors, EventSource's should handle
+||| errors internally in one of the following ways:
+||| - log the error
+||| - treat recoverable errors as an event, posting to the event queue.
+||| - signal an unrecoverable error by closing the channel.
 public export
 record EventSource (evts : List Type) where
   constructor On
-  thread : Channel (HSum evts) -> Async Poll [Errno] ()
+  thread : Channel (HSum evts) -> Async Poll [] ()
 
 ||| An event source which decodes key presses from the controlling TTY.
-covering
+export covering
 stdin : Has Key evts => EventSource evts
 stdin = On $ go (ansiDecoder . utf8Decoder)
 where
-  ||| Helper function to unpack a singleton ByteString.
-  getByte : ByteString -> Maybe Bits8
-  getByte bs = case unpack bs of
-    [byte] => Just byte
-    _ => Nothing
+  ||| Try to read a single byte from stdin.
+  |||
+  ||| Generally this will work. It may return Nothing if an IO error
+  ||| occurs, or if we don't get a byte back.
+  getByte : Async Poll [Errno] (Maybe Bits8)
+  getByte = do
+    byte <- readnb Stdin ByteString 1
+    case unpack byte of
+      [byte] => pure $ Just byte
+      _      => pure Nothing
 
   ||| Process bytes from stdin, stream key events into the event queue.
   |||
   ||| Stdin is read byte-by-byte, and sent through the ansi
   ||| decoder. If a key is decoded, it is sent to the event queue.
-  go : Automaton Bits8 Key -> Channel (HSum evts) -> Async Poll [Errno] ()
-  go decoder chan = do
-    byte <- readnb Stdin ByteString 1
-    case getByte byte of
-      Nothing => go decoder chan
-      Just byte => case next byte decoder of
-        Discard => go decoder chan
-        Advance next Nothing => go next chan
-        Advance next (Just key) => do
-          Sent <- send chan $ inject key | _ => pure ()
-          go next chan
-        Accept Nothing => go (reset decoder) chan
-        Accept (Just key) => do
-          Sent <- send chan $ inject key | _ => pure ()
-          go (reset decoder) chan
-        Reject err => do
-          -- XXX: how do I log errors?
-          -- Sent <- send chan err | _ => pure ()
-          go (reset decoder) chan
+  loop : Automaton Bits8 Key -> Channel (HSum evts) -> Async Poll [Errno] ()
+  loop decoder chan = case !getByte of
+    Nothing => loop decoder chan
+    Just byte => case next byte decoder of
+      Discard => loop decoder chan
+      Advance next Nothing => loop next chan
+      Advance next (Just key) => do
+        Sent <- send chan $ inject key | _ => pure ()
+        loop next chan
+      Accept Nothing => loop (reset decoder) chan
+      Accept (Just key) => do
+        Sent <- send chan $ inject key | _ => pure ()
+        loop (reset decoder) chan
+      Reject err => do
+        -- XXX: how do we want to handle this?
+        loop (reset decoder) chan
 
-||| Try to handle an event using one of the given handlers.
-|||
-||| The event must be covered by one of the handlers in the list.
-export
-handleEvent
-  :  {0 stateT, valueT : Type}
-  -> HSum evts
-  -> stateT
-  -> All (Event.Handler stateT valueT) evts
-  -> Async Poll es (Result stateT valueT)
-handleEvent (Here  x)  state (h :: hs) = pure $ h x state
-handleEvent (There xs) state (h :: hs) = handleEvent xs state hs
-
+  ||| Put stdin in raw-mode, ensuring proper cleanup. Then enter mainloop.
+  go : Automaton Bits8 Key -> Channel (HSum evts) -> Async Poll [] ()
+  go decoder chan = handling [Errno] [logError] $ use1 rawMode $ \_=> do
+    loop decoder chan
 
 ||| I had to split this out in order to get it to typecheck properly.
 |||
@@ -118,11 +142,14 @@ handleEvent (There xs) state (h :: hs) = handleEvent xs state hs
 |||
 ||| This function should not be called in a tight loop. It's expensive
 ||| to set up the async mainloop.
+|||
+||| Any errors that are unhandled in the application shoudl implement
+||| `Interpolation` so that they can be automatically logged.
 covering
 run
   :  {0 stateT, valueT : Type}
   -> {0 evts : List Type}
-  -> List (EventSource evts)
+  -> (sources : List (EventSource evts))
   -> Event.Handler stateT valueT (HSum evts)
   -> (render : stateT -> Context ())
   -> stateT
@@ -131,9 +158,16 @@ run srcs onEvent render state = do
   -- we need a mutable ref to store the return value,
   -- as there's no entry point for fibers that return a value.
   ret <- IORef.newIORef Nothing
-  epollApp $ handle [\e => stderrLn "Error \{e}"] (go ret)
+  -- enter async mainloop, handling errno by logging.
+  epollApp $ handling [Errno] [logError] $ do
+    events  <- channel 1
+    sources <- start $ race () $ spawn events <$> srcs
+    loop ret state events
+    cancel sources
+    close events
   readIORef ret
 where
+  ||| The main rendering loop.
   loop
     : IORef.IORef (Maybe valueT)
     -> stateT
@@ -158,15 +192,8 @@ where
   spawn
     :  Channel (HSum evts)
     -> (src : EventSource evts)
-    -> Async Poll [Errno] ()
+    -> Async Poll [] ()
   spawn chan src = src.thread chan
-
-  ||| Create the channel, spawn the input fibers, and begin the mainloop.
-  go : IORef.IORef (Maybe valueT) -> Async Poll [Errno] ()
-  go ret = use1 rawMode $ \_ => do
-    events  <- channel 1
-    sources <- start (race () $ (spawn events <$> srcs))
-    loop ret state events
 
 ||| A MainLoop instance based on `async-epoll`.
 |||
@@ -176,12 +203,17 @@ where
 export
 record AsyncMain (events : List Type) where
   constructor MkAsyncMain
-  sources : List (EventSource events)
+  sources    : List (EventSource events)
 
+||| Construct an async mainloop with the given event sources.
 covering export
-asyncMain : Has Key evts => List (EventSource evts) -> AsyncMain evts
+asyncMain
+  :  Has Key evts
+  => List (EventSource evts)
+  -> AsyncMain evts
 asyncMain sources = MkAsyncMain (stdin :: sources)
 
+||| Implement MainLoop for AsyncMain.
 export covering
 {evts : List Type} -> MainLoop (AsyncMain evts) (HSum evts) where
   runRaw self onEvent render init = do

@@ -8,6 +8,7 @@ import TUI.MainLoop.Async
 import IO.Async
 import IO.Async.Loop.Poller
 import IO.Async.Loop.Posix
+import IO.Async.Loop.Epoll
 import JSON.Derive
 
 
@@ -110,7 +111,7 @@ partial export
 main : IO ()
 main = do
   window   <- screen
-  let mainLoop : AsyncMain [Counter, Key] = asyncMain [(counter 10)]
+  let mainLoop := asyncMain {evts = [Counter, Key]} [(counter 10)]
   case !(runComponent mainLoop $ userEventDemo window.center) of
     Nothing => putStrLn "User Canceled"
     Just choice => putStrLn $ "User selected: \{show choice}"
