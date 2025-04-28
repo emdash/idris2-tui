@@ -254,6 +254,7 @@ asyncMain sources = MkAsyncMain (stdin :: sources)
 export covering
 {evts : List Type} -> MainLoop (AsyncMain evts) (HSum evts) where
   runRaw self onEvent render init = do
+    Right _ <- enableRawMode | _ => die "Couldn't set raw mode on stdin!"
     putStrLn ""
     altScreen True
     cursor False
