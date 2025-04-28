@@ -176,7 +176,7 @@ run srcs onEvent render state = do
   window <- screen
   -- enter async mainloop, handling errno by logging.
   epollRun $ handling [Errno] [logError] $ do
-    events   <- channel 1
+    events   <- channel 10
     sources  <- start $ race () $ spawn events <$> srcs
     sigwinch <- start $ winch_watch events
     loop ret window state events
