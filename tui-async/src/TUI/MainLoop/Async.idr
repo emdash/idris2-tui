@@ -78,6 +78,20 @@ public export
 0 PostEventFn : List Type -> Type
 PostEventFn evts = HSum evts -> Async Poll [] ()
 
+||| A producer of events.
+|||
+||| This is an asynchronous computation which should post events to
+||| the given event queue, which is an async `Channel`.
+|||
+||| While Async itself supports arbitrary errors, EventSource's should handle
+||| errors internally in one of the following ways:
+||| - log the error
+||| - treat recoverable errors as an event, posting to the event queue.
+||| - signal an unrecoverable error by returning.
+public export
+0 EventSource : List Type -> Type
+EventSource evts = PostEventFn evts -> Async Poll [] ()
+
 ||| Handle an error by logging it.
 export
 logError : Interpolation err => ErrorHandler () err
@@ -95,25 +109,10 @@ handling
   -> Async Poll []   ret
 handling errs handlers computation  = handle handlers computation
 
-||| A producer of events.
-|||
-||| This is an asynchronous computation which should post events to
-||| the given event queue, which is an async `Channel`.
-|||
-||| While Async itself supports arbitrary errors, EventSource's should handle
-||| errors internally in one of the following ways:
-||| - log the error
-||| - treat recoverable errors as an event, posting to the event queue.
-||| - signal an unrecoverable error by closing the channel.
-public export
-record EventSource (evts : List Type) where
-  constructor On
-  thread : PostEventFn evts -> Async Poll [] ()
-
 ||| An event source which decodes key presses from the controlling TTY.
 export covering
-stdin : Has Key evts => EventSource evts
-stdin = On $ go (ansiDecoder . utf8Decoder)
+keyboard : Has Key evts => EventSource evts
+keyboard = go (ansiDecoder . utf8Decoder)
 where
   ||| Try to read a single byte from stdin.
   |||
@@ -168,9 +167,6 @@ where
 |||
 ||| This function should not be called in a tight loop. It's expensive
 ||| to set up the async mainloop.
-|||
-||| Any errors that are unhandled in the application shoudl implement
-||| `Interpolation` so that they can be automatically logged.
 covering
 run
   :  {0 stateT, valueT : Type}
@@ -244,7 +240,7 @@ where
     :  Channel (Either Rect (HSum evts))
     -> (src : EventSource evts)
     -> Async Poll [] ()
-  spawn chan src = src.thread $ postEvent chan
+  spawn chan src = src $ postEvent chan
 
 ||| A MainLoop instance based on `async-epoll`.
 |||
@@ -257,17 +253,22 @@ record AsyncMain (events : List Type) where
   sources    : List (EventSource events)
 
 ||| Construct an async mainloop with the given event sources.
+|||
+||| The `keyboard` handler will be automatically added, so do not add
+||| it explicitly.
 covering export
 asyncMain
   :  Has Key evts
   => List (EventSource evts)
   -> AsyncMain evts
-asyncMain sources = MkAsyncMain (stdin :: sources)
+asyncMain sources = MkAsyncMain (keyboard :: sources)
 
 ||| Implement MainLoop for AsyncMain.
 export covering
 {evts : List Type} -> MainLoop (AsyncMain evts) (HSum evts) where
   runRaw self onEvent render init = do
+    -- XXX: this shouldn't be necessary, but the async raw mode
+    -- idiom isn't working. We'll leave it like this for now.
     Right _ <- enableRawMode | _ => die "Couldn't set raw mode on stdin!"
     putStrLn ""
     altScreen True

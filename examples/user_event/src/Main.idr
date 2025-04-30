@@ -32,9 +32,9 @@ data Counter
 ||| then repeats.
 covering
 counter : Has Counter evts => Nat -> EventSource evts
-counter n = On $ go n
+counter n = go n
 where
-  go : Nat -> PostEventFn evts -> Async Poll [] ()
+  go : Nat -> EventSource evts
   go 0 post = do
     post $ inject Main.Reset
     go n post
@@ -85,8 +85,8 @@ View UserEventDemo where
 ||| `union [onCounter, onKey]` composes two distinct event
 ||| handlers.
 |||
-||| When you need to compose event handlers with `Union`, specify the
-||| `User.Handler` type instead of `Component.Handler`.
+||| When you need to compose event handlers with `Union`, specify
+||| `Single.Handler` type instead of `Component.Handler`.
 userEventDemo : Pos -> Component (HSum [Counter, Key]) UserEventDemo
 userEventDemo pos = component {
   state   = (MkUser pos 0),
