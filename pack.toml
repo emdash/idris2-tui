@@ -43,3 +43,8 @@ type = "github"
 url  = "https://github.com/stefan-hoeck/idris2-async"
 commit = "latest:main"
 ipkg = "async-epoll/async-epoll.ipkg"
+
+[custom.all.tui-async]
+type = "local"
+path = "tui-async"
+ipkg = "tui-async.ipkg"

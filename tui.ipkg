@@ -9,12 +9,8 @@ depends = ansi
         , json
         , elab-util
         , quantifiers-extra
-        , posix
-	, async
-        , async-epoll
 
 modules = TUI
-        , TUI
         , TUI.Util
         , TUI.Component
         , TUI.Component.Box
@@ -39,13 +35,12 @@ modules = TUI
         , TUI.MainLoop.InputShim
         , TUI.MainLoop.Base
         , TUI.MainLoop.Default
-        , TUI.MainLoop.Async
         , TUI.Painting
 	, TUI.Prim
         , TUI.UTF8
         , TUI.View
         , TUI.Zipper.List
 
-sourcedir  = "src"
+sourcedir = "src"
 prebuild   = "make -C support all"
 preinstall = "make -C support install"

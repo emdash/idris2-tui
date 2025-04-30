@@ -1,0 +1,15 @@
+package tui-async
+version = 0.1.0
+authors = "emdash"
+maintainers = "emdash"
+license = "BSD-3"
+brief = "Easy terminal UI for Idris2"
+
+depends = tui
+        , posix
+	, async
+        , async-epoll
+
+modules = TUI.MainLoop.Async
+
+sourcedir  = "src"

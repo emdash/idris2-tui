@@ -59,12 +59,25 @@ module TUI.Painting
 
 import public Text.ANSI
 import Data.String
-import System.Posix.File
+--- xxx: these are temporary until console abstraction is implemented.
+import System.File
+import System.File.Virtual
+import System.File.ReadWrite
+--- to here ...
 import public TUI.Geometry
 
 
 %default total
 
+
+||| XXX: abstract over this.
+stdout : HasIO io => String -> io ()
+stdout = Prelude.IO.putStr
+
+||| XXX: abstract over this
+export
+stderrLn : HasIO io => String -> io ()
+stderrLn str = ignore $ fPutStrLn stderr str
 
 ||| A terminal image is just a giant string, and the terminal is
 ||| responsible for drawing it.

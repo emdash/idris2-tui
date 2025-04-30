@@ -15,6 +15,7 @@ authors = "emdash"
 -- packages to add to search path
 depends = contrib
 	, tui
+	, tui-async
 
 -- modules to install
 -- modules =

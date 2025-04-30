@@ -9,3 +9,7 @@ type = "local"
 path = "../../"
 ipkg = "tui.ipkg"
 
+[custom.all.tui-async]
+type = "local"
+path = "../../tui-async"
+ipkg = "tui-async.ipkg"

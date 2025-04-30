@@ -30,6 +30,8 @@ jobs:
         uses: actions/checkout@v3
       - name: Build lib
         run: pack --no-prompt build tui
+      - name: Build Async Lib
+        run: pack --no-prompt build tui-async
       - name: Build gallery
         run: pack --no-prompt build gallery
       - name: Build scrollclip

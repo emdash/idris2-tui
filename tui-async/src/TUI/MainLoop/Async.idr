@@ -70,7 +70,7 @@ PostEventFn evts = HSum evts -> Async Poll [] ()
 ||| Handle an error by logging it.
 export
 logError : Interpolation err => ErrorHandler () err
-logError err = stderrLn "Unhandled error: \{err}"
+logError err = File.stderrLn "Unhandled error: \{err}"
 
 ||| A more convenient wrapper around handler, with explicit error list.
 |||

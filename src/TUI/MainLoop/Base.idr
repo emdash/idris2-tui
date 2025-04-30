@@ -38,7 +38,6 @@ import Data.IORef
 import System
 import System.File
 import System.Concurrency
-import System.Posix.File
 import TUI.DFA
 import TUI.Event
 import TUI.Key
