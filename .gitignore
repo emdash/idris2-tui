@@ -3,3 +3,9 @@
 recipes/*
 inventory/*
 build/*
+support/tui-idris
+support/*.o
+tui-async/build/*
+lib/*
+examples/*/build/*
+
