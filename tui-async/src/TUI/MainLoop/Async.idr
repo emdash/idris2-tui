@@ -48,6 +48,7 @@ import TUI.MainLoop
 import TUI.Painting
 import TUI.UTF8
 import System
+import System.File
 import System.File.Error
 import System.File.Process
 import System.File.Virtual
@@ -56,6 +57,16 @@ import System.Posix.File
 
 %default total
 
+
+||| Tell TUI how to write to the console in an async context.
+ConsoleOutput (Async Poll [Errno]) where
+  writeStdout = fwritenb Stdout
+  perror      = fwritenb Stderr . (++ "\n")
+
+||| Tell TUI how to write to the context in plain IO.
+ConsoleOutput IO where
+  writeStdout = stdout
+  perror      = stderrLn
 
 ||| This is the type expected by `handle`.
 public export
@@ -215,9 +226,12 @@ where
       moveTo origin
       render window state
     endSyncUpdate
-    -- xxx: may need to upstream nonblocking version of this to async.
-    --      or we could try setting stdin to SYNC mode.
-    fflush stdout
+    -- xxx: may need a nonblocking version of this in async.
+    --
+    -- note: it seems to work without this line, but I will leave it in here
+    -- as a breadcrumb in case issues with this crop up in the future.
+    --
+    -- fflush stdout
     case !(receive chan) of
       Nothing            => pure ()
       Just (Left window) => loop ret window state chan

@@ -59,25 +59,20 @@ module TUI.Painting
 
 import public Text.ANSI
 import Data.String
---- xxx: these are temporary until console abstraction is implemented.
-import System.File
-import System.File.Virtual
-import System.File.ReadWrite
---- to here ...
 import public TUI.Geometry
 
 
 %default total
 
 
-||| XXX: abstract over this.
-stdout : HasIO io => String -> io ()
-stdout = Prelude.IO.putStr
-
-||| XXX: abstract over this
-export
-stderrLn : HasIO io => String -> io ()
-stderrLn str = ignore $ fPutStrLn stderr str
+||| Abstract over writing to the console.
+|||
+||| This is needed because Async needs non-blocking IO, but those
+||| functions aren't available in the Base mainloop.
+public export
+interface Monad io => ConsoleOutput io where
+  writeStdout : String -> io ()
+  perror      : String -> io ()
 
 ||| A terminal image is just a giant string, and the terminal is
 ||| responsible for drawing it.
@@ -157,11 +152,11 @@ clearMasked window mask =
 
 ||| Paint the context to stdout.
 export
-present : HasIO io => Area -> Context a -> io a
+present : ConsoleOutput io => Area -> Context a -> io a
 present screen (C masked mask content value) = do
-  stdout $ fastConcat $ toList masked
-  stdout $ clearMasked screen mask
-  stdout $ fastConcat $ toList content
+  writeStdout $ fastConcat $ toList masked
+  writeStdout $ clearMasked screen mask
+  writeStdout $ fastConcat $ toList content
   pure value
 
 ||| This is the internal clipping function which merely shifts the
@@ -349,43 +344,43 @@ namespace Arrow
 ||| screen mode, and synchronous update mode.
 |||
 ||| As these are only intended to be used from MainLoop
-||| implementations, they are `IO` actions, rather than context
+||| implementations, they are generic io actions, rather than context
 ||| actions.
 namespace VTerm
 
   ||| Clear the contents of the screen.
   export %inline
-  clearScreen : HasIO io => io ()
-  clearScreen = stdout $ eraseScreen All
+  clearScreen : ConsoleOutput io => io ()
+  clearScreen = writeStdout $ eraseScreen All
 
   ||| Switch into or out of the alternate screen buffer
   export %inline
-  altScreen : HasIO io => Bool -> io ()
-  altScreen True  = stdout $ "\ESC[?1049h"
-  altScreen False = stdout $ "\ESC[?1049l"
+  altScreen : ConsoleOutput io => Bool -> io ()
+  altScreen True  = writeStdout $ "\ESC[?1049h"
+  altScreen False = writeStdout $ "\ESC[?1049l"
 
   ||| Show or hide cursor
   export %inline
-  cursor : HasIO io => Bool -> io ()
-  cursor True  = stdout "\ESC[?25h"
-  cursor False = stdout "\ESC[?25l"
+  cursor : ConsoleOutput io => Bool -> io ()
+  cursor True  = writeStdout "\ESC[?25h"
+  cursor False = writeStdout "\ESC[?25l"
 
   ||| Tell the terminal to save its state.
   export %inline
-  saveCursor : HasIO io => io ()
-  saveCursor = stdout "\ESC7"
+  saveCursor : ConsoleOutput io => io ()
+  saveCursor = writeStdout "\ESC7"
 
   ||| Tell the terminal to restore its state.
   export %inline
-  restoreCursor : HasIO io => io ()
-  restoreCursor = stdout "\ESC8"
+  restoreCursor : ConsoleOutput io => io ()
+  restoreCursor = writeStdout "\ESC8"
 
   ||| synchronous update Supported by iTerm2 and other fancy terminals
   export %inline
-  beginSyncUpdate : HasIO io => io ()
-  beginSyncUpdate = stdout "\ESC[?2026h"
+  beginSyncUpdate : ConsoleOutput io => io ()
+  beginSyncUpdate = writeStdout "\ESC[?2026h"
 
   ||| synchronous update supported by iTerm2 and other fancy terminals
   export %inline
-  endSyncUpdate : HasIO io => io ()
-  endSyncUpdate = stdout "\ESC[?2026l"
+  endSyncUpdate : ConsoleOutput io => io ()
+  endSyncUpdate = writeStdout "\ESC[?2026l"

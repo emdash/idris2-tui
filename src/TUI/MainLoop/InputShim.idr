@@ -55,6 +55,11 @@ import TUI.Painting
 %default total
 
 
+ConsoleOutput IO where
+  writeStdout = Prelude.IO.putStr
+  perror      = ignore . (fPutStrLn stderr)
+
+
 ||| Decodes the given event type from Stdin.
 |||
 ||| The tag identifies the event type, whose contents are then decoded
@@ -213,7 +218,7 @@ export covering
           Left  next => loop sources next
           Right res  => pure res
         Left err     => do
-          ignore $ fPutStrLn stderr $ show err
+          perror $ show err
           loop sources state
 
 

@@ -47,6 +47,10 @@ import TUI.Painting
 
 %default total
 
+ConsoleOutput IO where
+  writeStdout = Prelude.IO.putStr
+  perror      = ignore . (fPutStrLn stderr)
+
 
 -- namespace used to make type of `Base` opaque within remainder of this file.
 namespace Base
@@ -102,7 +106,7 @@ MainLoop Base (HSum [Key]) where
           Right value => pure $ value
         Accept state => assert_total $ idris_crash "ANSI decoder in final state!"
         Reject str => do
-          stderrLn "ANSI Decode Error: \{str}"
+          perror "ANSI Decode Error: \{str}"
           loop (reset decoder) state
 
 ||| Special case for a singleton set of events
