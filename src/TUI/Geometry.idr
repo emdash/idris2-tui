@@ -369,10 +369,13 @@ export
 r80x24 : Rect
 r80x24 = MkRect origin (MkArea 80 24)
 
+||| Get the current window size from the kernel.
 export
-getWinSize : IO Area
+getWinSize : HasIO io => io Area
 getWinSize = do
   rawBits <- primIO prim__getWinSize
+  -- the support function packs these values into a bits32 to avoid
+  -- unecessary memory management, so we need to unpack them here.
   let high = rawBits `shiftR` 16 .&. 0xFFFF
   let low  = rawBits .&. 0xFFFF
   pure $ MkArea (cast low) (cast high)
