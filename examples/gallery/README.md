@@ -8,7 +8,7 @@ To run this demo:
 ```
 pack install-deps
 pack build
-./run.sh
+./build/exec/gallery
 ```
 ## Changing the Modal Stacking Behavior
 
@@ -22,8 +22,8 @@ With no arguments given, the modals in the demo will nest visually.
 
 | Arguments           | Behavior                        |
 |---------------------|---------------------------------|
-| `./run.sh topmost`  | Only render top-most component. |
-| `./run.sh inset`    | Same as default.                |
-| `./run.sh fromTop`  | Stack to-to-bottom.             |
-| `./run.sh fromLeft` | Stack left-to-right.            |
-| `./run.sh centered` | Center in frame.                |
+| `./build/exec/gallery topmost`  | Only render top-most component. |
+| `./build/exec/gallery inset`    | Same as default.                |
+| `./build/exec/gallery fromTop`  | Stack to-to-bottom.             |
+| `./build/exec/gallery fromLeft` | Stack left-to-right.            |
+| `./build/exec/gallery centered` | Center in frame.                |
