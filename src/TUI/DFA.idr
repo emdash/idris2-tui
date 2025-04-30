@@ -171,22 +171,24 @@ where
 
 ||| Compose two automata by chaining the output.
 |||
-||| XXX: make sure this logic is sensible.
+||| XXX: DFAs may, in fact, be profunctors. So perhaps I should look
+||| into implementing `Profunctor` for dfa's, once I learn more about
+||| them.
 export
 (.) : Automaton b c -> Automaton a b -> Automaton a c
-(.) snd fst = automaton (fst, snd) chain
+(.) f g = automaton (g, f) chain
   where
     chain : TransitionFn (Automaton a b, Automaton b c) a c
-    chain input self = case next input (Builtin.fst self) of
-      Discard               => Discard
-      Advance fst Nothing   => Advance (fst, Builtin.snd self) Nothing
-      Advance fst (Just o)  => case next o (Builtin.snd self) of
-        Discard     => Advance (fst, Builtin.snd self) Nothing
-        Advance x y => Advance (fst, x) y
+    chain input self = case next input (fst self) of
+      Discard            => Discard
+      Advance g Nothing  => Advance (g, snd self) Nothing
+      Advance g (Just o) => case next o (snd self) of
+        Discard     => Advance (g, snd self) Nothing
+        Advance x y => Advance (g, x) y
         Accept x    => Accept x
         Reject str  => Reject str
       Accept Nothing => Accept Nothing
-      Accept (Just o) => case next o (Builtin.snd self) of
+      Accept (Just o) => case next o (snd self) of
         Discard     => Accept  Nothing
         Advance x y => Advance (done, x) y
         Accept x    => Accept x
