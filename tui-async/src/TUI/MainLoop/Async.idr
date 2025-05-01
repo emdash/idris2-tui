@@ -167,6 +167,10 @@ where
 |||
 ||| This function should not be called in a tight loop. It's expensive
 ||| to set up the async mainloop.
+|||
+||| Note: parseq is used, because event sources all have the same
+||| type. Some of the behavior of parseq might be undesirable,
+||| however, it's a bit awkward to call `par` on a homogeneous list.
 covering
 run
   :  {0 stateT, valueT : Type}
@@ -184,7 +188,8 @@ run srcs onEvent render state = do
   -- enter async mainloop, handling errno by logging.
   epollRun $ handling [Errno] [logError] $ do
     events   <- channel 10
-    sources  <- start $ race () $ spawn events <$> srcs
+    -- see note about parseq, above.
+    sources  <- start $ parseq $ spawn events <$> srcs
     sigwinch <- start $ winch_watch events
     loop ret window state events
     cancel sources
