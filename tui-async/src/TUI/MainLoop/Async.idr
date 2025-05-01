@@ -68,10 +68,35 @@ ConsoleOutput IO where
   writeStdout = stdout
   perror      = stderrLn
 
-||| This is the type expected by `handle`.
+||| A fallible async computation within an application.
 public export
-0 ErrorHandler : Type -> Type -> Type
-ErrorHandler ret err = err -> Async Poll [] ret
+0 Throws : List Type -> Type -> Type
+Throws errs retT = Async Poll errs retT
+
+||| An infallible async computation within an application.
+public export
+0 NoExcept : Type -> Type
+NoExcept retT = Throws [] retT
+
+||| Handle an exception within an async computation.
+public export
+0 Catch : Type -> Type -> Type
+Catch retT errorT = errorT -> NoExcept retT
+
+||| Try to perform a computation, handling all errors to produce a pure result.
+|||
+||| This is intended to be used with a matching where clause, like so:
+|||
+|||    try [onErrno] $ do
+|||       ...
+|||    where
+|||      onErrno : Catch () Errno
+|||      onErrno errno = ...
+|||
+||| ...which starts to feels like exceptions.
+export
+try : All (Catch retT) es -> Throws es retT -> NoExcept retT
+try handlers fallible = handle handlers fallible
 
 ||| The opaque type of the event queue.
 |||
@@ -89,7 +114,7 @@ EventQueue tys = Channel (Either Rect (HSum tys))
 
 ||| Post an event to an event queue.
 |||
-||| This is intended to be called by event sources within your
+||| This is intended to be called by custom event sources within an
 ||| application.
 export
 putEvent
@@ -98,12 +123,12 @@ putEvent
   -> Has eventT evts
   => EventQueue evts
   -> eventT
-  -> Async Poll [] ()
+  -> NoExcept ()
 putEvent queue event = case !(send queue $ Right $ inject event) of
   _ => pure ()
 
 ||| Used internally to post window sizes to the event queue.
-putWin : EventQueue _ -> Rect -> Async Poll [] ()
+putWin : EventQueue _ -> Rect -> NoExcept ()
 putWin queue rect = case !(send queue $ Left rect) of
   _ => pure ()
 
@@ -119,12 +144,7 @@ putWin queue rect = case !(send queue $ Left rect) of
 ||| - signal an unrecoverable error by returning.
 public export
 0 EventSource : List Type -> Type
-EventSource evts = EventQueue evts -> Async Poll [] ()
-
-||| Handle an error by logging it.
-export
-logError : Interpolation err => ErrorHandler () err
-logError err = File.stderrLn "Unhandled error: \{err}"
+EventSource evts = EventQueue evts -> NoExcept ()
 
 ||| A more convenient wrapper around `handle`, with explicit error
 ||| list.
@@ -134,9 +154,9 @@ logError err = File.stderrLn "Unhandled error: \{err}"
 export
 handling
   :  (errs : List Type)
-  -> All (ErrorHandler ret) errs
-  -> Async Poll errs ret
-  -> Async Poll []   ret
+  -> All (Catch retT) errs
+  -> Throws errs retT
+  -> NoExcept retT
 handling errs handlers computation  = handle handlers computation
 
 ||| An event source which decodes key presses from the controlling TTY.
@@ -148,7 +168,7 @@ where
   |||
   ||| Generally this will work. It may return Nothing if an IO error
   ||| occurs, or if we don't get a byte back.
-  getByte : Async Poll [Errno] (Maybe Bits8)
+  getByte : Throws [Errno] (Maybe Bits8)
   getByte = do
     byte <- readnb Stdin ByteString 1
     case unpack byte of
@@ -159,7 +179,7 @@ where
   |||
   ||| Stdin is read byte-by-byte, and sent through the ansi
   ||| decoder. If a key is decoded, it is sent to the event queue.
-  loop : Automaton Bits8 Key -> EventQueue evts -> Async Poll [Errno] ()
+  loop : Automaton Bits8 Key -> EventQueue evts -> Throws [Errno] ()
   loop decoder post = case !getByte of
     Nothing => loop decoder post
     Just byte => case next byte decoder of
@@ -177,9 +197,12 @@ where
         loop (reset decoder) post
 
   ||| Put stdin in raw-mode, ensuring proper cleanup. Then enter mainloop.
-  go : Automaton Bits8 Key -> EventQueue evts -> Async Poll [] ()
-  go decoder queue = handling [Errno] [logError] $ use1 rawMode $ \_=> do
+  go : Automaton Bits8 Key -> EventQueue evts -> NoExcept ()
+  go decoder queue = try [onErrno] $ do
     loop decoder queue
+  where
+    onErrno : Catch () Errno
+    onErrno err = File.stderrLn "Error reading from stdin: \{err}"
 
 ||| Like epollApp, but we also allow handling of other signals.
 |||
@@ -189,13 +212,13 @@ covering
 epollRun
   :  {default [SIGINT] sigs : List Signal}
   -> Has SIGINT sigs
-  => Async Poll [] ()
+  => NoExcept ()
   -> IO ()
 epollRun prog = do
   n <- asyncThreads
   app n sigs epollPoller cprog
 where
-  cprog : Async Poll [] ()
+  cprog : NoExcept ()
   cprog = race () [prog, dropErrs {es = [Errno]} $ onSignal SIGINT $ pure ()]
 
 ||| I had to split this out in order to get it to typecheck properly.
@@ -223,26 +246,33 @@ run srcs onEvent render state = do
   ret    <- IORef.newIORef Nothing
   window <- screen
   -- enter async mainloop, handling errno by logging.
-  epollRun {sigs = [SIGINT, SIGWINCH]} $ handling [Errno] [logError] $ do
+  epollRun {sigs = [SIGINT, SIGWINCH]} $ try [onErrno] $ do
     events   <- channel 10
     -- see note about parseq, above.
-    sources  <- start $ parseq $ spawn events <$> srcs
-    sigwinch <- start $ winch_watch events
+    sources  <- start $ parseq $ spawn events <$> (sigwinch :: srcs)
     loop ret window state events
     cancel sources
-    cancel sigwinch
     close events
   readIORef ret
 where
+  onErrno : Catch () Errno
+  onErrno err = File.stderrLn "Unhandled IO error, exiting: \{err}"
+
   ||| Watch for sigwinch, updating the window size when it is received.
   |||
   ||| This avoids having to issue the ioctl before every frame, as is
   ||| done in the non-async mainloop.
-  winch_watch : EventQueue _ -> Async Poll [Errno] ()
-  winch_watch events = do
-    ignore $ awaitSignals [SIGWINCH]
-    weakenErrors $ putWin events !screen
-    winch_watch events
+  sigwinch : EventQueue _ -> NoExcept ()
+  sigwinch events = try [onErrno] loop
+    where
+      loop : Throws [Errno] ()
+      loop = do
+        ignore $ awaitSignals [SIGWINCH]
+        weakenErrors $ putWin events !screen
+        loop
+
+      onErrno : Catch () Errno
+      onErrno err = File.stderrLn "Error awaiting SIGWINCH"
 
   ||| spawn an input source as an async fiber.
   |||
@@ -251,7 +281,7 @@ where
   spawn
     :  EventQueue evts
     -> (src : EventSource evts)
-    -> Async Poll [] ()
+    -> NoExcept ()
   spawn chan src = src chan
 
   ||| The main rendering loop.
@@ -260,7 +290,7 @@ where
     -> Rect
     -> stateT
     -> EventQueue evts
-    -> Async Poll [Errno] ()
+    -> Throws [Errno] ()
   loop ret window state chan = do
     beginSyncUpdate
     clearScreen

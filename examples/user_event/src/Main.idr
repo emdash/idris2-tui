@@ -34,7 +34,7 @@ covering
 counter : Has Counter evts => Nat -> EventSource evts
 counter n queue = loop n
 where
-  loop : Nat -> Async Poll [] ()
+  loop : Nat -> NoExcept ()
   loop 0 = do
     putEvent queue Main.Reset
     loop n
