@@ -97,7 +97,8 @@ export
 logError : Interpolation err => ErrorHandler () err
 logError err = File.stderrLn "Unhandled error: \{err}"
 
-||| A more convenient wrapper around handler, with explicit error list.
+||| A more convenient wrapper around `handle`, with explicit error
+||| list.
 |||
 ||| `handle` doesn't work well with inline do blocks, because idris
 ||| can't always infer the error type.
