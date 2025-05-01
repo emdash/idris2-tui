@@ -32,16 +32,16 @@ data Counter
 ||| then repeats.
 covering
 counter : Has Counter evts => Nat -> EventSource evts
-counter n = go n
+counter n queue = loop n
 where
-  go : Nat -> EventSource evts
-  go 0 post = do
-    post $ inject Main.Reset
-    go n post
-  go n@(S k) post = do
-    post $ inject Inc
+  loop : Nat -> Async Poll [] ()
+  loop 0 = do
+    putEvent queue Main.Reset
+    loop n
+  loop n@(S k) = do
+    putEvent queue Inc
     sleep 1.s
-    go k post
+    loop k
 
 ||| The demo state consists of a cursor position and a count.
 |||

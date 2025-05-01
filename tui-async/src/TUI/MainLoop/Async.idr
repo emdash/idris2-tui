@@ -73,10 +73,39 @@ public export
 0 ErrorHandler : Type -> Type -> Type
 ErrorHandler ret err = err -> Async Poll [] ret
 
-||| Called within an event source to post to an event queue.
-public export
-0 PostEventFn : List Type -> Type
-PostEventFn evts = HSum evts -> Async Poll [] ()
+||| The opaque type of the event queue.
+|||
+||| This is an async `Channel`, but we hide the true type here to
+||| minimize breaking changes as things evolve, and provide a simpler,
+||| safer API.
+|||
+||| Exposing the channel allows external event sources to shut down
+||| the entire app by closing the channel.
+export
+0 EventQueue : List Type -> Type
+-- the Left constructor of the either is used internally to respond to
+-- SIGWINCH. The right constructor is for events.
+EventQueue tys = Channel (Either Rect (HSum tys))
+
+||| Post an event to an event queue.
+|||
+||| This is intended to be called by event sources within your
+||| application.
+export
+putEvent
+  :  {0 eventT : Type}
+  -> {0 evts   : List Type}
+  -> Has eventT evts
+  => EventQueue evts
+  -> eventT
+  -> Async Poll [] ()
+putEvent queue event = case !(send queue $ Right $ inject event) of
+  _ => pure ()
+
+||| Used internally to post window sizes to the event queue.
+putWin : EventQueue _ -> Rect -> Async Poll [] ()
+putWin queue rect = case !(send queue $ Left rect) of
+  _ => pure ()
 
 ||| A producer of events.
 |||
@@ -90,7 +119,7 @@ PostEventFn evts = HSum evts -> Async Poll [] ()
 ||| - signal an unrecoverable error by returning.
 public export
 0 EventSource : List Type -> Type
-EventSource evts = PostEventFn evts -> Async Poll [] ()
+EventSource evts = EventQueue evts -> Async Poll [] ()
 
 ||| Handle an error by logging it.
 export
@@ -113,7 +142,7 @@ handling errs handlers computation  = handle handlers computation
 ||| An event source which decodes key presses from the controlling TTY.
 export covering
 keyboard : Has Key evts => EventSource evts
-keyboard = go (ansiDecoder . utf8Decoder)
+keyboard queue = go (ansiDecoder . utf8Decoder) queue
 where
   ||| Try to read a single byte from stdin.
   |||
@@ -130,34 +159,41 @@ where
   |||
   ||| Stdin is read byte-by-byte, and sent through the ansi
   ||| decoder. If a key is decoded, it is sent to the event queue.
-  loop : Automaton Bits8 Key -> PostEventFn evts -> Async Poll [Errno] ()
+  loop : Automaton Bits8 Key -> EventQueue evts -> Async Poll [Errno] ()
   loop decoder post = case !getByte of
     Nothing => loop decoder post
     Just byte => case next byte decoder of
       Discard => loop decoder post
       Advance next Nothing => loop next post
       Advance next (Just key) => do
-        weakenErrors $ post $ inject key
+        weakenErrors $ putEvent queue key
         loop next post
       Accept Nothing => loop (reset decoder) post
       Accept (Just key) => do
-        weakenErrors $ post $ inject key
+        weakenErrors $ putEvent queue key
         loop (reset decoder) post
       Reject err => do
         -- XXX: how do we want to handle this?
         loop (reset decoder) post
 
   ||| Put stdin in raw-mode, ensuring proper cleanup. Then enter mainloop.
-  go : Automaton Bits8 Key -> PostEventFn evts -> Async Poll [] ()
-  go decoder post = handling [Errno] [logError] $ use1 rawMode $ \_=> do
-    loop decoder post
+  go : Automaton Bits8 Key -> EventQueue evts -> Async Poll [] ()
+  go decoder queue = handling [Errno] [logError] $ use1 rawMode $ \_=> do
+    loop decoder queue
 
-||| Like epollApp, but we also allow handling of SIGWINCH.
+||| Like epollApp, but we also allow handling of other signals.
+|||
+||| XXX: remove if https://github.com/stefan-hoeck/idris2-async/pull/99 lands
+||| upstream, and just call `epollApp`.
 covering
-epollRun : Async Poll [] () -> IO ()
+epollRun
+  :  {default [SIGINT] sigs : List Signal}
+  -> Has SIGINT sigs
+  => Async Poll [] ()
+  -> IO ()
 epollRun prog = do
   n <- asyncThreads
-  app n [SIGINT, SIGWINCH] epollPoller cprog
+  app n sigs epollPoller cprog
 where
   cprog : Async Poll [] ()
   cprog = race () [prog, dropErrs {es = [Errno]} $ onSignal SIGINT $ pure ()]
@@ -187,7 +223,7 @@ run srcs onEvent render state = do
   ret    <- IORef.newIORef Nothing
   window <- screen
   -- enter async mainloop, handling errno by logging.
-  epollRun $ handling [Errno] [logError] $ do
+  epollRun {sigs = [SIGINT, SIGWINCH]} $ handling [Errno] [logError] $ do
     events   <- channel 10
     -- see note about parseq, above.
     sources  <- start $ parseq $ spawn events <$> srcs
@@ -198,28 +234,32 @@ run srcs onEvent render state = do
     close events
   readIORef ret
 where
-  postEvent : Channel (Either Rect (HSum evts)) -> PostEventFn evts
-  postEvent chan event = do
-    case !(send chan $ Right event) of
-      Sent => pure ()
-      _    => pure ()
-
   ||| Watch for sigwinch, updating the window size when it is received.
   |||
   ||| This avoids having to issue the ioctl before every frame, as is
   ||| done in the non-async mainloop.
-  winch_watch : Channel (Either Rect (HSum evts)) -> Async Poll [Errno] ()
-  winch_watch chan = do
+  winch_watch : EventQueue _ -> Async Poll [Errno] ()
+  winch_watch events = do
     ignore $ awaitSignals [SIGWINCH]
-    Sent <- send chan $ Left !screen | _ => pure ()
-    winch_watch chan
+    weakenErrors $ putWin events !screen
+    winch_watch events
+
+  ||| spawn an input source as an async fiber.
+  |||
+  ||| since these are just functions of the event queue, it's
+  ||| basically a flipped `apply`.
+  spawn
+    :  EventQueue evts
+    -> (src : EventSource evts)
+    -> Async Poll [] ()
+  spawn chan src = src chan
 
   ||| The main rendering loop.
   loop
     :  IORef.IORef (Maybe valueT)
     -> Rect
     -> stateT
-    -> Channel (Either Rect (HSum evts))
+    -> EventQueue evts
     -> Async Poll [Errno] ()
   loop ret window state chan = do
     beginSyncUpdate
@@ -241,13 +281,6 @@ where
         Left  next => loop ret window next chan
         Right res  => writeIORef ret res
 
-  ||| helper function to spawn each input source.
-  spawn
-    :  Channel (Either Rect (HSum evts))
-    -> (src : EventSource evts)
-    -> Async Poll [] ()
-  spawn chan src = src $ postEvent chan
-
 ||| A MainLoop instance based on `async-epoll`.
 |||
 ||| It consumes events from multiple fibers, which are written to an
@@ -265,6 +298,12 @@ record AsyncMain (events : List Type) where
 covering export
 asyncMain
   :  Has Key evts
+  -- XXX: how to make sure we don't get a second instance of
+  -- `keyboard`?
+  -- note: there's nothing intrinsically wrong with having multiple
+  -- `Key` input sources. e.g. we might have a second keyboard-like
+  -- input device, such as a serial barcode scanner, and we might not
+  -- bother to distinguish between them.
   => List (EventSource evts)
   -> AsyncMain evts
 asyncMain sources = MkAsyncMain (keyboard :: sources)
