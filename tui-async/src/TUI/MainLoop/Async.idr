@@ -204,23 +204,6 @@ where
   onErrno : Catch () Errno
   onErrno err = File.stderrLn "Error reading from stdin: \{err}"
 
-||| Like epollApp, but we also allow handling of other signals.
-|||
-||| XXX: remove if https://github.com/stefan-hoeck/idris2-async/pull/99 lands
-||| upstream, and just call `epollApp`.
-covering
-epollRun
-  :  {default [SIGINT] sigs : List Signal}
-  -> Has SIGINT sigs
-  => NoExcept ()
-  -> IO ()
-epollRun prog = do
-  n <- asyncThreads
-  app n sigs epollPoller cprog
-where
-  cprog : NoExcept ()
-  cprog = race () [prog, dropErrs {es = [Errno]} $ onSignal SIGINT $ pure ()]
-
 ||| I had to split this out in order to get it to typecheck properly.
 |||
 ||| The whole UI runs in an async fiber.
@@ -246,7 +229,7 @@ run srcs onEvent render state = do
   ret    <- IORef.newIORef Nothing
   window <- screen
   -- enter async mainloop, handling errno by logging.
-  epollRun {sigs = [SIGINT, SIGWINCH]} $ try [onErrno] $ do
+  epollApp {sigs = [SIGINT, SIGWINCH]} $ try [onErrno] $ do
     events   <- channel 10
     -- see note about parseq, above.
     sources  <- start $ parseq $ spawn events <$> (sigwinch :: srcs)
