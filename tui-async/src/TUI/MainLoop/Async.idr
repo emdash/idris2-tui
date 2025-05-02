@@ -159,10 +159,14 @@ handling
   -> NoExcept retT
 handling errs handlers computation  = handle handlers computation
 
-||| An event source which decodes key presses from the controlling TTY.
+||| The keyboard event source.
+|||
+||| Stdin must already be placed in raw mode, or this will not work
+||| correctly.
 export covering
 keyboard : Has Key evts => EventSource evts
-keyboard queue = go (ansiDecoder . utf8Decoder) queue
+keyboard queue = try [onErrno] $ do
+  loop (ansiDecoder . utf8Decoder)
 where
   ||| Try to read a single byte from stdin.
   |||
@@ -179,30 +183,26 @@ where
   |||
   ||| Stdin is read byte-by-byte, and sent through the ansi
   ||| decoder. If a key is decoded, it is sent to the event queue.
-  loop : Automaton Bits8 Key -> EventQueue evts -> Throws [Errno] ()
-  loop decoder post = case !getByte of
-    Nothing => loop decoder post
+  loop : Automaton Bits8 Key -> Throws [Errno] ()
+  loop decoder = case !getByte of
+    Nothing => loop decoder
     Just byte => case next byte decoder of
-      Discard => loop decoder post
-      Advance next Nothing => loop next post
+      Discard => loop decoder
+      Advance next Nothing => loop next
       Advance next (Just key) => do
         weakenErrors $ putEvent queue key
-        loop next post
-      Accept Nothing => loop (reset decoder) post
+        loop next
+      Accept Nothing => loop (reset decoder)
       Accept (Just key) => do
         weakenErrors $ putEvent queue key
-        loop (reset decoder) post
+        loop (reset decoder)
       Reject err => do
         -- XXX: how do we want to handle this?
-        loop (reset decoder) post
+        loop (reset decoder)
 
-  ||| Put stdin in raw-mode, ensuring proper cleanup. Then enter mainloop.
-  go : Automaton Bits8 Key -> EventQueue evts -> NoExcept ()
-  go decoder queue = try [onErrno] $ do
-    loop decoder queue
-  where
-    onErrno : Catch () Errno
-    onErrno err = File.stderrLn "Error reading from stdin: \{err}"
+  ||| Handle errors reading from stdin.
+  onErrno : Catch () Errno
+  onErrno err = File.stderrLn "Error reading from stdin: \{err}"
 
 ||| Like epollApp, but we also allow handling of other signals.
 |||
