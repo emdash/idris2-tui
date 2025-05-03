@@ -55,6 +55,11 @@ import TUI.Painting
 %default total
 
 
+ConsoleOutput IO where
+  writeStdout = Prelude.IO.putStr
+  perror      = ignore . (fPutStrLn stderr)
+
+
 ||| Decodes the given event type from Stdin.
 |||
 ||| The tag identifies the event type, whose contents are then decoded
@@ -199,11 +204,12 @@ export covering
     loop sources state = do
       beginSyncUpdate
       clearScreen
-      present (!screen).size $ do
+      window <- screen
+      present window.size $ do
         -- all drawing operations now live in the `Context` monad,
         -- so they must be nested under the `present` IO action.
         moveTo origin
-        render state
+        render window state
       endSyncUpdate
       fflush stdout
       next <- getLine
@@ -212,7 +218,7 @@ export covering
           Left  next => loop sources next
           Right res  => pure res
         Left err     => do
-          ignore $ fPutStrLn stderr $ show err
+          perror $ show err
           loop sources state
 
 

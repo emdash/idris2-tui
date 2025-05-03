@@ -38,7 +38,6 @@ import Data.IORef
 import System
 import System.File
 import System.Concurrency
-import System.Posix.File
 import TUI.DFA
 import TUI.Event
 import TUI.Key
@@ -47,6 +46,11 @@ import TUI.Painting
 
 
 %default total
+
+ConsoleOutput IO where
+  writeStdout = Prelude.IO.putStr
+  perror      = ignore . (fPutStrLn stderr)
+
 
 -- namespace used to make type of `Base` opaque within remainder of this file.
 namespace Base
@@ -87,11 +91,12 @@ MainLoop Base (HSum [Key]) where
     loop decoder state = do
       beginSyncUpdate
       clearScreen
-      present (!screen).size $ do
+      window <- screen
+      present window.size $ do
         -- all drawing operations now live in the `Context` monad,
         -- so they must be nested under the `present` IO action.
         moveTo origin
-        render state
+        render window state
       endSyncUpdate
       case next !getChar decoder of
         Discard => loop decoder state
@@ -101,7 +106,7 @@ MainLoop Base (HSum [Key]) where
           Right value => pure $ value
         Accept state => assert_total $ idris_crash "ANSI decoder in final state!"
         Reject str => do
-          stderrLn "ANSI Decode Error: \{str}"
+          perror "ANSI Decode Error: \{str}"
           loop (reset decoder) state
 
 ||| Special case for a singleton set of events

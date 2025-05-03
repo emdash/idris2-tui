@@ -1,12 +1,14 @@
 # Custom Events
 
-This demonstrates using custom event types with the mainloop. To run:
+This demonstrates using custom event types and how to use the async
+mainloop from `tui-async`.
+
+To run:
 
 ```
-pack build
-./runs.sh
+$ pack build
+$ ./build/exec/user_event
 ```
 
-This uses the `InputShim` mainloop, so you *must* run the example via
-`run.sh`, or otherwise arrange to have an input shim process drive the
-event loop.
+Or you can just do `pack run`, however there is a noticible delay
+before the demo launches.

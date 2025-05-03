@@ -13,7 +13,7 @@ It shows how to:
 
 To build the package: `pack build`
 
-To edit a file named todo.txt: `./run.sh todo.txt`
+To edit a file named todo.txt: `./build/exec/todo todo.json`
 
 | Key     | Function                           |
 |---------|------------------------------------|

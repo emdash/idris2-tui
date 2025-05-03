@@ -78,6 +78,28 @@ record Automaton inputT outputT where
   start      : State
   transition : TransitionFn State inputT outputT
 
+||| Compute the next state for an abstract DFA.
+|||
+||| This API enables composing aribtrary DFAs.
+export
+next : TransitionFn (Automaton inputT outputT) inputT outputT
+next input self = case self.transition input self.state of
+  Discard               => Discard
+  Advance state output  => Advance ({state := state} self) output
+  Accept  output        => Accept output
+  Reject err            => Reject err
+
+export
+run : Automaton inputT outputT -> List inputT -> Either String (List outputT)
+run self [] = Right []
+run self (x :: xs) with (next x self)
+  _ | Discard                = run self xs
+  _ | Advance next' Nothing  = run next' xs
+  _ | Advance next' (Just o) = Right $ o :: !(run next' xs)
+  _ | Accept        Nothing  = Right $ []
+  _ | Accept        (Just o) = Right $ [o]
+  _ | Reject        err      = Left err
+
 ||| Construct a new DFA from an initial state and a transition function.
 export
 automaton
@@ -91,17 +113,6 @@ automaton start transition = MkAutomaton {
   start = start,
   transition = transition
 }
-
-||| Compute the next state for an abstract DFA.
-|||
-||| This API enables composing aribtrary DFAs.
-export
-next : TransitionFn (Automaton inputT outputT) inputT outputT
-next input self = case self.transition input self.state of
-  Discard               => Discard
-  Advance state output  => Advance ({state := state} self) output
-  Accept  output        => Accept output
-  Reject err            => Reject err
 
 ||| Reset a DFA to its initial state.
 export
@@ -160,21 +171,24 @@ where
 
 ||| Compose two automata by chaining the output.
 |||
-||| XXX: make sure this logic is sensible.
-(.) : Automaton a b -> Automaton b c -> Automaton a c
-(.) fst snd = automaton (fst, snd) chain
+||| XXX: DFAs may, in fact, be profunctors. So perhaps I should look
+||| into implementing `Profunctor` for dfa's, once I learn more about
+||| them.
+export
+(.) : Automaton b c -> Automaton a b -> Automaton a c
+(.) f g = automaton (g, f) chain
   where
     chain : TransitionFn (Automaton a b, Automaton b c) a c
-    chain input self = case next input (Builtin.fst self) of
-      Discard               => Discard
-      Advance fst Nothing   => Advance (fst, Builtin.snd self) Nothing
-      Advance fst (Just o)  => case next o (Builtin.snd self) of
-        Discard     => Advance (fst, Builtin.snd self) Nothing
-        Advance x y => Advance (fst, x) y
+    chain input self = case next input (fst self) of
+      Discard            => Discard
+      Advance g Nothing  => Advance (g, snd self) Nothing
+      Advance g (Just o) => case next o (snd self) of
+        Discard     => Advance (g, snd self) Nothing
+        Advance x y => Advance (g, x) y
         Accept x    => Accept x
         Reject str  => Reject str
       Accept Nothing => Accept Nothing
-      Accept (Just o) => case next o (Builtin.snd self) of
+      Accept (Just o) => case next o (snd self) of
         Discard     => Accept  Nothing
         Advance x y => Advance (done, x) y
         Accept x    => Accept x

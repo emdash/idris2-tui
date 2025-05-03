@@ -4,7 +4,12 @@ module Main
 import Derive.Prelude
 import TUI
 import TUI.MainLoop
-import TUI.MainLoop.InputShim
+import TUI.MainLoop.Async
+import IO.Async
+import IO.Async.Signal
+import IO.Async.Loop.Poller
+import IO.Async.Loop.Posix
+import IO.Async.Loop.Epoll
 import JSON.Derive
 
 
@@ -20,6 +25,23 @@ data Counter
   = Inc
   | Reset
 %runElab derive "Counter" [FromJSON]
+
+||| A user-defined event source.
+|||
+||| It sends a sequence of `n` `Inc` events, then a `Reset` event,
+||| then repeats.
+covering
+counter : Has Counter evts => Nat -> EventSource evts
+counter n queue = loop n
+where
+  loop : Nat -> NoExcept ()
+  loop 0 = do
+    putEvent queue Main.Reset
+    loop n
+  loop n@(S k) = do
+    putEvent queue Inc
+    sleep 1.s
+    loop k
 
 ||| The demo state consists of a cursor position and a count.
 |||
@@ -38,6 +60,7 @@ record UserEventDemo where
 View UserEventDemo where
   size _ = MkArea 1 1
   paint state window self = do
+    showTextAt window.nw $ show window.size
     sgr [SetReversed True]
     showTextAt self.pos $ show self.count
     sgr [Reset]
@@ -62,8 +85,8 @@ View UserEventDemo where
 ||| `union [onCounter, onKey]` composes two distinct event
 ||| handlers.
 |||
-||| When you need to compose event handlers with `Union`, specify the
-||| `User.Handler` type instead of `Component.Handler`.
+||| When you need to compose event handlers with `Union`, specify
+||| `Single.Handler` type instead of `Component.Handler`.
 userEventDemo : Pos -> Component (HSum [Counter, Key]) UserEventDemo
 userEventDemo pos = component {
   state   = (MkUser pos 0),
@@ -73,7 +96,7 @@ userEventDemo pos = component {
   ||| Handle counter events.
   onCounter : Single.Handler UserEventDemo UserEventDemo Counter
   onCounter Inc   self = update $ {count $= S} self
-  onCounter Reset self = update $ {count $= S} self
+  onCounter Reset self = update $ {count := 0} self
 
   ||| Handle key presses.
   onKey : Single.Handler UserEventDemo UserEventDemo Key
@@ -85,16 +108,13 @@ userEventDemo pos = component {
   onKey Escape self = exit
   onKey _      self = ignore
 
+||| Main entry point
 partial export
 main : IO ()
 main = do
-  window   <- screen
-  -- start with the basic event loop
-  keyboard <- inputShim
-  -- then append our custom event source to it.
-  counter  <- raw {eventT = Counter} "Counter"
-  let mainLoop = keyboard.addEvent counter
-  -- now we can run as we would any stock component.
-  case !(runComponent mainLoop $ userEventDemo window.center) of
+  -- construct an async mainloop, specfying the additional counter event source.
+  let mainLoop := asyncMain {evts = [Counter, Key]} [(counter 10)]
+  -- create the application state, and run the component.
+  case !(runComponent mainLoop $ userEventDemo (!screen).center) of
     Nothing => putStrLn "User Canceled"
     Just choice => putStrLn $ "User selected: \{show choice}"

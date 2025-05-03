@@ -9,10 +9,8 @@ depends = ansi
         , json
         , elab-util
         , quantifiers-extra
-        , posix
 
 modules = TUI
-        , TUI
         , TUI.Util
         , TUI.Component
         , TUI.Component.Box
@@ -22,7 +20,7 @@ modules = TUI
         , TUI.Component.Menu
         , TUI.Component.Modal
         , TUI.Component.Numeric
-        --, TUI.Component.Pane
+      --, TUI.Component.Pane
         , TUI.Component.PushButton
         , TUI.Component.Table
         , TUI.Component.TextInput
@@ -36,9 +34,13 @@ modules = TUI
         , TUI.MainLoop
         , TUI.MainLoop.InputShim
         , TUI.MainLoop.Base
-	, TUI.MainLoop.Default
+        , TUI.MainLoop.Default
         , TUI.Painting
+	, TUI.Prim
+        , TUI.UTF8
         , TUI.View
-	, TUI.Zipper.List
+        , TUI.Zipper.List
 
 sourcedir = "src"
+prebuild   = "make -C support all"
+preinstall = "make -C support install"
