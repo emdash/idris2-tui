@@ -1,15 +1,9 @@
 [custom.all.scrollclip]
 type = "local"
 path = "."
-ipkg = "todo.ipkg"
-test = "test/test.ipkg"
-
-[custom.all.scrollclip-test]
-type = "local"
-path = "test"
-ipkg = "test.ipkg"
+ipkg = "scrollclip.ipkg"
 
 [custom.all.tui]
 type = "local"
-path = "../../"
+path = "../.."
 ipkg = "tui.ipkg"

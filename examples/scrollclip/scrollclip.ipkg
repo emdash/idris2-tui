@@ -13,8 +13,7 @@ authors = "emdash"
 -- langversion
 
 -- packages to add to search path
-depends = contrib
-	, tui
+depends = tui
 
 -- modules to install
 -- modules =
