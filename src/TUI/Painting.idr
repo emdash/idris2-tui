@@ -27,7 +27,7 @@
   -- OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
   -- OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-  ||| Immediate-mode TUI graphics.
+||| Immediate-mode TUI graphics.
 |||
 ||| These routines are slightly higher-level than that provided by
 ||| `Text.ANSI`. In particular, we use types from `TUI.Geometry`.
