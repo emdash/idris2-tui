@@ -172,7 +172,7 @@ implementation
 where
   size self = vunion (size @{vertical} self.fields) (size self.focus)
   paint state window self = do
-    vline (window.nw.shiftRight (self.split + 1)) window.height
+    vline (window.nw.shiftRight (cast $ self.split + 1)) window.height
     ignore $ packTop @{vertical} fieldsState window self.fields
     ignore $ packBottom state window self.focus
   where
