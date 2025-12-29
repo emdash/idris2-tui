@@ -162,7 +162,7 @@ clearMasked window mask =
       j <- [1 .. window.height]
       case mask.contains $ MkPos (natToInteger i) (natToInteger j) of
         True  => []
-        False => [cursorMove i j, " "]
+        False => [cursorMove j i, " "]
 
 ||| Paint the context to stdout.
 export
