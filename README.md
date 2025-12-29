@@ -1,6 +1,7 @@
 # `idris-tui`
 
-Aa framework for TUI applications in Idris.
+The key feature that is needed is sync updates (see this for more info):
+https://github.com/contour-terminal/vt-extensions/blob/master/synchronized-output.md
 
 List of supported terminals:
 - iTerm2
@@ -10,7 +11,9 @@ List of supported terminals:
 
 List of unsupported terminals:
 - intelliJ (not tested)
-- tmux (no sync update, to investigate)
+- tmux
+  - feature is listed (`-T sync`), but doesn't seem to work in practice:
+  - https://github.com/tmux/tmux/issues/4299
 - VTE terminals (not tested)
 - anything not mentioned above.
 
