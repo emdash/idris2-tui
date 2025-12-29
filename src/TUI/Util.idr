@@ -193,6 +193,11 @@ namespace Data.Nat
     True  => b `minus` a
     False => a `minus` b
 
+namespace Data.Integer
+  ||| Same as above, but the operands are integers.
+  public export
+  diff : Integer -> Integer -> Nat
+  diff a b = integerToNat $ abs $ a - b
 
 namespace Data.Vect.Quantifiers
   ||| Map a function over a heterogenous vector.
