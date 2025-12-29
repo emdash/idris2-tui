@@ -23,27 +23,6 @@ type   = "local"
 path   = "examples/user_event/"
 ipkg   = "user_event.ipkg"
 
-# Using upstream async:main for now.
-# Remove these when official async stabilizes.
-
-[custom.all.async]
-type = "github"
-url  = "https://github.com/stefan-hoeck/idris2-async"
-commit = "latest:main"
-ipkg = "async.ipkg"
-
-[custom.all.async-posix]
-type = "github"
-url  = "https://github.com/stefan-hoeck/idris2-async"
-commit = "latest:main"
-ipkg = "async-posix/async-posix.ipkg"
-
-[custom.all.async-epoll]
-type = "github"
-url  = "https://github.com/stefan-hoeck/idris2-async"
-commit = "latest:main"
-ipkg = "async-epoll/async-epoll.ipkg"
-
 [custom.all.tui-async]
 type = "local"
 path = "tui-async"

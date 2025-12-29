@@ -71,7 +71,7 @@ record EventSource eventT where
   0 RawEventT : Type
   tag         : String
   {auto impl  : FromJSON RawEventT}
-  decoder     : IORef $ Automaton RawEventT eventT
+  decoder     : IORef.IORef $ Automaton RawEventT eventT
 
 ||| A MainLoop which receive events as a stream of JSON records on STDIN.
 |||
