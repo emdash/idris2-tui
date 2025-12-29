@@ -79,20 +79,20 @@ namespace Pos
   origin = MkPos 1 1
 
   public export
-  (.shiftRight) : Pos -> Nat -> Pos
-  (.shiftRight) self offset = { x $= (+ (natToInteger offset)) } self
+  (.shiftRight) : Pos -> Integer -> Pos
+  (.shiftRight) self offset = { x $= (+ offset) } self
 
   public export
-  (.shiftLeft) : Pos -> Nat -> Pos
-  (.shiftLeft) self offset = { x $= ((flip (-)) (natToInteger offset)) } self
+  (.shiftLeft) : Pos -> Integer -> Pos
+  (.shiftLeft) self offset = { x $= ((flip (-)) offset) } self
 
   public export
-  (.shiftDown) : Pos -> Nat -> Pos
-  (.shiftDown) self offset = { y $= (+ (natToInteger offset)) } self
+  (.shiftDown) : Pos -> Integer -> Pos
+  (.shiftDown) self offset = { y $= (+ offset) } self
 
   public export
-  (.shiftUp) : Pos -> Nat -> Pos
-  (.shiftUp) self offset = { y $= ((flip (-)) (natToInteger offset)) } self
+  (.shiftUp) : Pos -> Integer -> Pos
+  (.shiftUp) self offset = { y $= ((flip (-)) offset) } self
 
 namespace OverloadsPosAreaPos
   ||| Adding a point to an area returns a new point.
@@ -255,7 +255,7 @@ namespace Rect
   (.splitRight) : Rect -> Nat -> (Rect, Rect)
   (.splitRight) b w =
     let
-      right = fromPoints (b.ne.shiftLeft (w `minus` 1)) (b.se + unit)
+      right = fromPoints (b.ne.shiftLeft (cast (w `minus` 1))) (b.se + unit)
       left  = fromPoints b.nw $ right.sw.shiftDown 1
     in (left, right)
 
@@ -273,7 +273,7 @@ namespace Rect
   (.splitBottom) : Rect -> Nat -> (Rect, Rect)
   (.splitBottom) b h =
     let
-      bot = fromPoints (b.sw.shiftUp (h `minus` 1)) (b.se + unit)
+      bot = fromPoints (b.sw.shiftUp (cast (h `minus` 1))) (b.se + unit)
       top = fromPoints b.nw $ bot.ne.shiftRight 1
     in (top, bot)
 
@@ -305,6 +305,16 @@ namespace Rect
   relativeTo (MkRect nw _) (MkRect offset size) =
     let pos = MkPos (nw.x + offset.x) (nw.y + offset.y)
     in MkRect pos size
+
+  ||| Like shiftRight, but takes an Integer. Negative offset shifts left.
+  public export
+  (.shiftX) : Rect -> Integer -> Rect
+  (.shiftX) self offset = { pos $= ((flip (.shiftRight)) offset) } self
+
+  ||| Like shiftDown, but takes an Integer. Negative offset shifts up.
+  public export
+  (.shiftY) : Rect -> Integer -> Rect
+  (.shiftY) self offset = { pos $= ((flip (.shiftDown)) offset) } self
 
   public export
   (.shiftRight) : Rect -> Nat -> Rect
