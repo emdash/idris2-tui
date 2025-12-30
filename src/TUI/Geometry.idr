@@ -47,8 +47,8 @@ import TUI.Prim
 public export
 record Pos where
   constructor MkPos
-  x : Nat
-  y : Nat
+  x : Integer
+  y : Integer
 %runElab derive "Pos" [Eq, Ord, Show]
 
 ||| The dimensions of a screen view
@@ -70,6 +70,7 @@ record Rect where
   size : Area
 %runElab derive "Rect" [Eq, Ord, Show]
 
+
 namespace Pos
 
   ||| Top-left screen corner
@@ -78,44 +79,44 @@ namespace Pos
   origin = MkPos 1 1
 
   public export
-  (.shiftRight) : Pos -> Nat -> Pos
+  (.shiftRight) : Pos -> Integer -> Pos
   (.shiftRight) self offset = { x $= (+ offset) } self
 
   public export
-  (.shiftLeft) : Pos -> Nat -> Pos
-  (.shiftLeft) self offset = { x $= (`minus` offset) } self
+  (.shiftLeft) : Pos -> Integer -> Pos
+  (.shiftLeft) self offset = { x $= ((flip (-)) offset) } self
 
   public export
-  (.shiftDown) : Pos -> Nat -> Pos
+  (.shiftDown) : Pos -> Integer -> Pos
   (.shiftDown) self offset = { y $= (+ offset) } self
 
   public export
-  (.shiftUp) : Pos -> Nat -> Pos
-  (.shiftUp) self offset = { y $= (`minus` offset) } self
+  (.shiftUp) : Pos -> Integer -> Pos
+  (.shiftUp) self offset = { y $= ((flip (-)) offset) } self
 
 namespace OverloadsPosAreaPos
   ||| Adding a point to an area returns a new point.
   public export
   (+) : Pos -> Area -> Pos
-  (+) (MkPos x y) (MkArea w h) = MkPos (x + w) (y + h)
+  (+) (MkPos x y) (MkArea w h) = MkPos (x + natToInteger w) (y + natToInteger h)
 
   public export
   (-) : Pos -> Area -> Pos
-  a - v = MkPos (a.x `minus` v.width) (a.y `minus` v.height)
+  a - v = MkPos (a.x - natToInteger v.width) (a.y - natToInteger v.height)
 
 namespace OverloadsPosPosArea
   public export
   (-) : Pos -> Pos -> Area
   (-) a b = MkArea (a.x `diff` b.x) (a.y `diff` b.y)
 
-namespace OverloadsNatPosPos
+namespace OverloadsIntegerPosPos
   public export
-  (*) : Nat -> Pos -> Pos
+  (*) : Integer -> Pos -> Pos
   scalar * pos = MkPos (scalar * pos.x) (scalar * pos.y)
 
-namespace OverloadsPosNatPos
+namespace OverloadsPosIntegerPos
   public export
-  (*) : Pos -> Nat -> Pos
+  (*) : Pos -> Integer -> Pos
   pos * scalar = MkPos (scalar * pos.x) (scalar * pos.y)
 
 namespace OverloadsNatAreaArea
@@ -197,23 +198,23 @@ namespace Rect
 
   ||| The column of the left side of the rect
   export
-  (.w) : Rect -> Nat
+  (.w) : Rect -> Integer
   (.w) b = b.pos.x
 
   ||| The column of the east side of the rect
   export
-  (.e) : Rect -> Nat
-  (.e) b = b.pos.x + b.hspan
+  (.e) : Rect -> Integer
+  (.e) b = b.pos.x + natToInteger b.hspan
 
   ||| The row of the north side of the rect
   export
-  (.n) : Rect -> Nat
+  (.n) : Rect -> Integer
   (.n) b = b.pos.y
 
   ||| The row of the south side of the rect.
   export
-  (.s) : Rect -> Nat
-  (.s) b = b.pos.y + b.vspan
+  (.s) : Rect -> Integer
+  (.s) b = b.pos.y + natToInteger b.vspan
 
   ||| Northwest corner of the given rect
   export
@@ -254,7 +255,7 @@ namespace Rect
   (.splitRight) : Rect -> Nat -> (Rect, Rect)
   (.splitRight) b w =
     let
-      right = fromPoints (b.ne.shiftLeft (w `minus` 1)) (b.se + unit)
+      right = fromPoints (b.ne.shiftLeft (cast (w `minus` 1))) (b.se + unit)
       left  = fromPoints b.nw $ right.sw.shiftDown 1
     in (left, right)
 
@@ -272,7 +273,7 @@ namespace Rect
   (.splitBottom) : Rect -> Nat -> (Rect, Rect)
   (.splitBottom) b h =
     let
-      bot = fromPoints (b.sw.shiftUp (h `minus` 1)) (b.se + unit)
+      bot = fromPoints (b.sw.shiftUp (cast (h `minus` 1))) (b.se + unit)
       top = fromPoints b.nw $ bot.ne.shiftRight 1
     in (top, bot)
 
@@ -304,6 +305,16 @@ namespace Rect
   relativeTo (MkRect nw _) (MkRect offset size) =
     let pos = MkPos (nw.x + offset.x) (nw.y + offset.y)
     in MkRect pos size
+
+  ||| Like shiftRight, but takes an Integer. Negative offset shifts left.
+  public export
+  (.shiftX) : Rect -> Integer -> Rect
+  (.shiftX) self offset = { pos $= ((flip (.shiftRight)) offset) } self
+
+  ||| Like shiftDown, but takes an Integer. Negative offset shifts up.
+  public export
+  (.shiftY) : Rect -> Integer -> Rect
+  (.shiftY) self offset = { pos $= ((flip (.shiftDown)) offset) } self
 
   public export
   (.shiftRight) : Rect -> Nat -> Rect
@@ -410,7 +421,6 @@ shrink r = inset r $ MkArea 1 1
 export
 grow : Rect -> Rect
 grow r = outset r $ MkArea 1 1
-
 
 namespace Test
   0 TestPos : Pos

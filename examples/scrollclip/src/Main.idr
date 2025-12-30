@@ -36,11 +36,7 @@ View a => View (ViewPort a) where
     showTextAt (MkPos 0 81) $ show window
   where
     offset : Rect -> (Integer, Integer) -> Rect
-    offset self (x, y) = case (x < 0, y < 0) of
-      (True, True)   => (self.shiftLeft  $ cast $ -x).shiftUp   $ cast $ -y
-      (True, False)  => (self.shiftLeft  $ cast $ -x).shiftDown $ cast    y
-      (False, True)  => (self.shiftRight $ cast    x).shiftUp   $ cast $ -y
-      (False, False) => (self.shiftRight $ cast    x).shiftDown $ cast    y
+    offset self (x, y) = (self.shiftX x).shiftY y
 
 [mine] View (Integer, Integer) where
   size = const $ MkArea 0 0
