@@ -64,20 +64,6 @@ import public TUI.Geometry
 
 %default total
 
-||| Distinguish Display Coordinates from Logical Coordinates.
-|||
-||| Geometry uses signed positions to allow calculating with negative
-||| positions. This is needed to allow scolling content past the edge of the
-||| screen.
-|||
-||| However, Actual terminals do not work with negative indices. This enforces
-||| that cordinates are clamped to the actual display geometry prior to output.
--- public export
--- record Pos where
---   constructor MkPos
---   x : Nat
---   y : Nat
-
 
 ||| Abstract over writing to the console.
 |||
