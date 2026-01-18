@@ -126,4 +126,3 @@ export
 {0 events : List Type} -> Has Key events => Editable events String where
   fromValue = textInput {events}
   blank     = textInput {events} ""
-

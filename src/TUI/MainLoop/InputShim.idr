@@ -50,6 +50,7 @@ import TUI.Event
 import TUI.Key
 import TUI.MainLoop
 import TUI.Painting
+import JSON
 
 
 %default total
