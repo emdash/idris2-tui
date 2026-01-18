@@ -42,7 +42,7 @@ module TUI.Event
 
 
 import Data.IORef
-import public JSON
+import JSON
 import JSON.Derive
 import TUI.DFA
 import Data.List
