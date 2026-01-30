@@ -95,6 +95,7 @@ packRight state window self = do
 
 namespace Foldable
 
+  ||| Type alias to make subsequent definitions more readable.
   public export
   0 LayoutFn : Type -> (Type -> Type) -> Type
   LayoutFn v t = State -> Rect -> t v -> Context Rect
@@ -102,41 +103,58 @@ namespace Foldable
   ||| Paint the given list of views, laying them out vertically within
   ||| `window`.
   export
-  paintWith : View v => Foldable t => PackFn v -> LayoutFn v t
-  paintWith pack state window self = foldl draw1 (pure window) self
-    where
-      draw1 : Context Rect -> v -> Context Rect
-      draw1 window self = pack state !window self
-  
-  export  
-  sizeWith 
-    : View v 
-    => Foldable t 
-    => Functor t 
-    => (Area -> Area -> Area) 
-    -> t v 
+  paintWith
+    :  View v
+    => Foldable t
+    => PackFn v
+    -> (Nat -> v -> Bool)
+    -> LayoutFn v t
+  paintWith pack focused state window self = snd $ foldl
+    draw1
+    (0, (pure window))
+    self
+  where
+    state' : Nat -> v -> State
+    state' i self = case focused i self of
+      True => state
+      False => demoteFocused state
+
+    draw : Nat -> Context Rect -> v -> Context Rect
+    draw i window x = pack (state' i x) !window x
+
+    draw1 : (Nat, Context Rect) -> v -> (Nat, Context Rect)
+    draw1 (i, c) x = (S i, draw i c x)
+
+  ||| Size a foldable container using the given area operation.
+  export
+  sizeWith
+    : View v
+    => Foldable t
+    => Functor t
+    => (Area -> Area -> Area)
+    -> t v
     -> Area
   sizeWith sz self = foldl sz (MkArea 0 0) (size <$> self)
 
   ||| Convenience function for automatic vertical layout
   export
   paintVertical : View v => Foldable t => LayoutFn v t
-  paintVertical = paintWith packTop
+  paintVertical = paintWith packTop (const $ const False)
 
   ||| Convenience function for automatic horizontal layout
   export
   paintHorizontal : View v => Foldable t => LayoutFn v t
-  paintHorizontal = paintWith packLeft
+  paintHorizontal = paintWith packLeft (const $ const False)
 
-  ||| Size the given list of views, laying them out vertically within.
+  ||| Size the given list of views, assuming vertical layout
   export
-  sizeVertical : View v => Foldable t => t v -> Area
-  sizeVertical self = foldl (flip $ hunion . size) (MkArea 0 0) self
+  sizeVertical : View v => Foldable t => Functor t => t v -> Area
+  sizeVertical = sizeWith hunion
 
-  ||| Size the given list of views, laying them out horizontally within.
+  ||| Size the given list of views, assuming horizontal layout
   export
-  sizeHorizontal : View v => Foldable t => t v -> Area
-  sizeHorizontal self = foldl (flip $ vunion . size) (MkArea 0 0) self
+  sizeHorizontal : View v => Foldable t => Functor t => t v -> Area
+  sizeHorizontal = sizeWith vunion
 
 ||| A concrete view type for horizontal and vertical separators.
 public export
