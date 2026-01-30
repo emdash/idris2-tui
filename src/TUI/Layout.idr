@@ -44,16 +44,16 @@ import TUI.View
 %default total
 
 
-||| Size the given list of views, laying them out vertically within.
-export
-sizeVertical : View itemT => List itemT -> Area
-sizeVertical self = foldl (flip $ hunion . size) (MkArea 0 0) self
+||| A function which paints a view, returning the remaining area.
+public export
+0 PackFn : Type -> Type
+PackFn v = State -> Rect -> v -> Context Rect
 
 ||| Paint the given view into the top of the given window.
 |||
 ||| Return the remaning space in the window.
 export
-packTop : View v => State -> Rect -> v -> Context Rect
+packTop : View v => PackFn v
 packTop state window self = do
   let split = (size self).height
   let (top, bottom) = window.splitTop split
@@ -64,7 +64,7 @@ packTop state window self = do
 |||
 ||| Return the remaning space in the window.
 export
-packBottom : View v => State -> Rect -> v -> Context Rect
+packBottom : View v => PackFn v
 packBottom state window self = do
   let split = (size self).height
   let (top, bottom) = window.splitBottom split
@@ -75,7 +75,7 @@ packBottom state window self = do
 |||
 ||| Return the remaning space in the window.
 export
-packLeft : View v => State -> Rect -> v -> Context Rect
+packLeft : View v => PackFn v
 packLeft state window self = do
   let split = (size self).width
   let (left, right) = window.splitLeft split
@@ -86,41 +86,57 @@ packLeft state window self = do
 |||
 ||| Return the remaning space in the window.
 export
-packRight : View v => State -> Rect -> v -> Context Rect
+packRight : View v => PackFn v
 packRight state window self = do
   let split = (size self).width
   let (left, right) = window.splitRight split
   paint state right self
   pure left
 
-||| Paint the given list of views, laying them out vertically within
-||| `window`.
-export
-paintVertical
-  : View v
-  => (state   : State)
-  -> (window  : Rect)
-  -> (self    : List v)
-  -> Context Rect
-paintVertical state window [] = pure window
-paintVertical state window (x :: xs) = paintVertical state !(packTop state window x) xs
+namespace Foldable
 
-||| Size the given list of views, laying them out horizontally within.
-export
-sizeHorizontal : View itemT => List itemT -> Area
-sizeHorizontal self = foldl (flip $ vunion . size) (MkArea 0 0) self
+  public export
+  0 LayoutFn : Type -> (Type -> Type) -> Type
+  LayoutFn v t = State -> Rect -> t v -> Context Rect
 
-||| Paint the given list of views, laying them out vertically within
-||| `window`.
-export
-paintHorizontal
-  : View v
-  => (state   : State)
-  -> (window  : Rect)
-  -> (self    : List v)
-  -> Context Rect
-paintHorizontal state window [] = pure window
-paintHorizontal state window (x :: xs) = paintHorizontal state !(packLeft state window x) xs
+  ||| Paint the given list of views, laying them out vertically within
+  ||| `window`.
+  export
+  paintWith : View v => Foldable t => PackFn v -> LayoutFn v t
+  paintWith pack state window self = foldl draw1 (pure window) self
+    where
+      draw1 : Context Rect -> v -> Context Rect
+      draw1 window self = pack state !window self
+  
+  export  
+  sizeWith 
+    : View v 
+    => Foldable t 
+    => Functor t 
+    => (Area -> Area -> Area) 
+    -> t v 
+    -> Area
+  sizeWith sz self = foldl sz (MkArea 0 0) (size <$> self)
+
+  ||| Convenience function for automatic vertical layout
+  export
+  paintVertical : View v => Foldable t => LayoutFn v t
+  paintVertical = paintWith packTop
+
+  ||| Convenience function for automatic horizontal layout
+  export
+  paintHorizontal : View v => Foldable t => LayoutFn v t
+  paintHorizontal = paintWith packLeft
+
+  ||| Size the given list of views, laying them out vertically within.
+  export
+  sizeVertical : View v => Foldable t => t v -> Area
+  sizeVertical self = foldl (flip $ hunion . size) (MkArea 0 0) self
+
+  ||| Size the given list of views, laying them out horizontally within.
+  export
+  sizeHorizontal : View v => Foldable t => t v -> Area
+  sizeHorizontal self = foldl (flip $ vunion . size) (MkArea 0 0) self
 
 ||| A concrete view type for horizontal and vertical separators.
 public export
