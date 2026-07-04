@@ -134,8 +134,8 @@ handleSelected
   -> {k   : Nat}
   -> {tys : Vect k Type}
   -> Component.Handler (FocusRing {events} tys) (All Maybe tys) (HSum events)
-handleSelected event self = case !(handle event self.selected) of
-  Continue x => update $ {items := updateSelected !x} self
+handleSelected event self = case handle event self.selected of
+  Continue x => Continue $ (\x => {items := updateSelected x} self) <$> x
   Yield v    => yield self.values
   Push x f   => push x $ onMerge f
 where

@@ -176,7 +176,7 @@ handleChar
   :  Supported a
   => Char
   -> Numeric a
-  -> IO $ Response (HSum events) (Numeric a) a
+  -> Response (HSum events) (Numeric a) a
 handleChar char self = case charToInput {a = a} char of
   Nothing => ignore
   Just i  => update $ insert i self

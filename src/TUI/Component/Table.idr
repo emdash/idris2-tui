@@ -250,7 +250,7 @@ handleSelected
   -> Component.Handler (Table {events} tys) (List (All Maybe tys)) (HSum events)
 handleSelected event self = case self.selected of
   Nothing => ignore
-  Just s  => handleResponse !(handle event s)
+  Just s  => handleResponse $ handle event s
 where
   updateSelected : (self.Selected {events}) -> Zipper (All (Component (HSum events)) tys)
   updateSelected item = case cursor self.rows of
@@ -262,8 +262,8 @@ where
 
   handleResponse
     :  Response (HSum events) (self.Selected {events}) (index self.column tys)
-    -> IO (Response (HSum events) (Table {events} tys) (List (All Maybe tys)))
-  handleResponse (Continue x) = update $ {rows := (updateSelected !x)} self
+    -> Response (HSum events) (Table {events} tys) (List (All Maybe tys))
+  handleResponse (Continue x) = Continue $ (\x => {rows := updateSelected x} self) <$> x
   handleResponse (Yield _   ) = update $ next self
   handleResponse (Push x f  ) = push x $ onMerge f
 
