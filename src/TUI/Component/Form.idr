@@ -108,7 +108,7 @@ handleField
   -> Component.Handler (Field {events} valueT) valueT (HSum events)
 handleField event self = case !(handle event self.value) of
   Continue state => update $ {value := !state} self
-  Yield result   => yield result
+  Yield result   => pure $ Yield result
   Exit           => exit
   Push top merge => push top (onMerge merge)
 where

@@ -92,7 +92,7 @@ record Component eventT valueT where
 public export
 data Response eventT stateT valueT
   = Continue (IO stateT)
-  | Yield valueT
+  | Yield (IO valueT)
   | Exit
   | Push (Component eventT a) (Maybe a -> stateT)
 
@@ -132,7 +132,7 @@ namespace ComponentDSL
   ||| A generic response: yield given value to the parent, or exit.
   export
   yield : valueT -> IO (Response _ _ valueT)
-  yield value = pure $ Yield value
+  yield value = pure $ Yield $ pure value
 
   ||| A generic response: exit.
   export
@@ -185,7 +185,7 @@ export
 handle : Component.Handler (Component eventT valueT) valueT eventT
 handle event self = case !(self.handler event self.state) of
   Continue state => update $ {state := !state} self
-  Yield result   => yield result
+  Yield result   => pure $ Yield result
   Exit           => exit
   Push top merge => push top $ updateInner merge
 where
@@ -288,7 +288,7 @@ Functor (Component eventT) where
       handle : Component.Handler wrapped.State b eventT
       handle event state = case !(wrapped.handler event state) of
         Continue state => pure $ Continue state
-        Yield result   => yield $ f result
+        Yield result   => pure $ Yield $ f <$> result
         Exit           => exit
         Push top merge => push top merge
 
@@ -313,7 +313,7 @@ mapMaybe f wrapped = component @{wrapped.vimpl} wrapped.state handle get
     handle : Component.Handler wrapped.State b e
     handle event state = case !(wrapped.handler event state) of
       Continue state => pure $ Continue state
-      Yield result   => exitIf $ f result
+      Yield result   => exitIf $ f !result
       Exit           => exit
       Push top merge => push top merge
 
