@@ -137,7 +137,6 @@ handleSelected
 handleSelected event self = case !(handle event self.selected) of
   Continue x => update $ {items := updateSelected !x} self
   Yield v    => yield self.values
-  Exit       => exit
   Push x f   => push x $ onMerge f
 where
   updateSelected : self.Selected -> All (Component (HSum events)) tys

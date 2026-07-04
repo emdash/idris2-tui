@@ -265,7 +265,6 @@ where
     -> IO (Response (HSum events) (Table {events} tys) (List (All Maybe tys)))
   handleResponse (Continue x) = update $ {rows := (updateSelected !x)} self
   handleResponse (Yield _   ) = update $ next self
-  handleResponse (Exit      ) = exit
   handleResponse (Push x f  ) = push x $ onMerge f
 
 ||| Construct a table component

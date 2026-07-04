@@ -92,8 +92,7 @@ record Component eventT valueT where
 public export
 data Response eventT stateT valueT
   = Continue (IO stateT)
-  | Yield (IO valueT)
-  | Exit
+  | Yield (IO (Maybe valueT))
   | Push (Component eventT a) (Maybe a -> stateT)
 
 AbstractHandler stateT valueT globalT localT =
@@ -132,12 +131,12 @@ namespace ComponentDSL
   ||| A generic response: yield given value to the parent, or exit.
   export
   yield : valueT -> IO (Response _ _ valueT)
-  yield value = pure $ Yield $ pure value
+  yield value = pure $ Yield $ pure $ Just value
 
   ||| A generic response: exit.
   export
-  exit : IO (Response _ _ _)
-  exit = pure $ Exit
+  exit : IO (Response _ _ valueT)
+  exit = pure $ Yield $ pure Nothing
 
   ||| A generic response: yield or exit, depending on argument.
   export
@@ -186,7 +185,6 @@ handle : Component.Handler (Component eventT valueT) valueT eventT
 handle event self = case !(self.handler event self.state) of
   Continue state => update $ {state := !state} self
   Yield result   => pure $ Yield result
-  Exit           => exit
   Push top merge => push top $ updateInner merge
 where
   updateInner : (Maybe a -> self.State) -> Maybe a -> Component eventT valueT
@@ -288,8 +286,9 @@ Functor (Component eventT) where
       handle : Component.Handler wrapped.State b eventT
       handle event state = case !(wrapped.handler event state) of
         Continue state => pure $ Continue state
-        Yield result   => pure $ Yield $ f <$> result
-        Exit           => exit
+        Yield result   => pure $ Yield $ do
+          result <- result
+          pure $ f <$> result
         Push top merge => push top merge
 
 ||| This is like above `map`, but takes a partial function.
@@ -313,8 +312,11 @@ mapMaybe f wrapped = component @{wrapped.vimpl} wrapped.state handle get
     handle : Component.Handler wrapped.State b e
     handle event state = case !(wrapped.handler event state) of
       Continue state => pure $ Continue state
-      Yield result   => exitIf $ f !result
-      Exit           => exit
+      Yield result   => do
+        result <- result
+        case f ?hole of
+          Nothing => pure $ Continue $ pure wrapped.state
+          v  => pure $ Yield $ pure v
       Push top merge => push top merge
 
 ||| Cute alias for `mapMaybe' above.

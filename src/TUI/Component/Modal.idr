@@ -123,8 +123,7 @@ export
 handle : Event.Handler (Modal eventT rootT) rootT eventT
 handle event self = case !(handle event self.component) of
   Continue state => update $ {component := !state} self
-  Yield result   => doPop $ Just <$> result
-  Exit           => doPop $ pure Nothing
+  Yield result   => doPop $ result
   Push top merge => update $ push top self merge
 where
   doPop : IO (Maybe self.topT) -> Result (Modal eventT rootT) rootT

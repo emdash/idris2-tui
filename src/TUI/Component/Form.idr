@@ -109,7 +109,6 @@ handleField
 handleField event self = case !(handle event self.value) of
   Continue state => update $ {value := !state} self
   Yield result   => pure $ Yield result
-  Exit           => exit
   Push top merge => push top (onMerge merge)
 where
   ||| Some boilerplate:
@@ -243,7 +242,6 @@ where
   handleEdit = case !(handleSelected {events} (inject key) self.fields) of
     Continue state => update $ {fields := !state} self
     Yield _        => update $ next self
-    Exit           => ignore
     Push top merge => push top $ onMerge merge
 
   ||| validate form fields
